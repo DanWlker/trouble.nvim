@@ -1,3 +1,4 @@
+local Main = require("trouble.main")
 local Promise = require("trouble.promise")
 local Qf = require("trouble.qf")
 local Section = require("trouble.section")
@@ -18,8 +19,9 @@ local Util = require("trouble.util")
 ---@field opts trouble.Mode
 ---@field sections trouble.Section[]
 ---@field first_update trouble.Promise
----@field qf_id? number
----@field _written? trouble.Qf.entry[] last entries written to the quickfix list
+---@field list_id? number id of the quickfix / location list this mode owns
+---@field list_win? number window the location list belongs to (nil for quickfix)
+---@field _written? trouble.Qf.entry[] last entries written to the list
 ---@field _filters table<string, trouble.ListFilter>
 local M = {}
 M.__index = M
@@ -120,9 +122,43 @@ function M:title()
   return "Trouble: " .. (self.opts.mode or "results")
 end
 
---- True when this list is the quickfix list that `:cnext` and friends act on.
+--- The window this mode's location list belongs to, or `nil` when it uses the
+--- quickfix list. Location lists die with their window, so an invalid window
+--- means the list is gone and has to be built again.
+---@return number?
+function M:win()
+  if self.opts.list ~= "loclist" then
+    return nil
+  end
+  if self.list_win and vim.api.nvim_win_is_valid(self.list_win) then
+    return self.list_win
+  end
+  return nil
+end
+
+--- Picks the window a location list should attach to. Called when the user
+--- explicitly loads the mode, so the list follows them to the window they are
+--- actually working in.
+function M:retarget()
+  if self.opts.list ~= "loclist" then
+    return
+  end
+  local main = Main.get()
+  local win = main and main.win or vim.api.nvim_get_current_win()
+  if win ~= self.list_win then
+    -- a different window means a different location list
+    self.list_win = win
+    self.list_id = nil
+    self._written = nil
+  end
+end
+
+--- True when this list is the one `:cnext` / `:lnext` currently act on.
 function M:is_active()
-  return Qf.is_current(self.qf_id)
+  if self.opts.list == "loclist" and not self:win() then
+    return false
+  end
+  return Qf.is_current(self:win(), self.list_id)
 end
 
 --- Writes the items to the quickfix list, creating it when needed,
@@ -136,20 +172,24 @@ end
 ---@param opts? {force?: boolean}
 ---@return boolean written
 function M:write(opts)
+  local win = self:win()
+  if self.opts.list == "loclist" and not win then
+    return false
+  end
   local entries = self:entries()
 
-  if not (opts and opts.force) and Qf.exists(self.qf_id) and Qf.same(entries, self._written) then
+  if not (opts and opts.force) and Qf.exists(win, self.list_id) and Qf.same(entries, self._written) then
     return false
   end
 
   local title = self:title()
-  if Qf.exists(self.qf_id) then
-    Qf.replace(self.qf_id, entries, title)
+  if Qf.exists(win, self.list_id) then
+    Qf.replace(win, self.list_id, entries, title)
   else
-    self.qf_id = Qf.create(entries, title)
+    self.list_id = Qf.create(win, entries, title)
   end
   self._written = entries
-  Qf.post()
+  Qf.post(win)
   return true
 end
 
@@ -189,6 +229,7 @@ end
 --- Showing the window is the user's job: `:copen`, or a `cwindow` autocmd
 --- on `QuickFixCmdPost`.
 function M:open()
+  self:retarget()
   self:listen()
   self
     :refresh({ update = false, opening = true })
@@ -196,7 +237,7 @@ function M:open()
       local count = self:count()
 
       self:write({ force = true })
-      Qf.activate(self.qf_id)
+      Qf.activate(self:win(), self.list_id)
 
       if count == 0 then
         if self.opts.warn_no_results then
@@ -207,7 +248,7 @@ function M:open()
           })
         end
       elseif count == 1 and self.opts.auto_jump then
-        vim.cmd("cfirst")
+        vim.cmd(self.opts.list == "loclist" and "lfirst" or "cfirst")
       end
     end)
     :next(self.first_update.resolve)
@@ -224,7 +265,7 @@ function M:at()
   if not self:is_active() then
     return {}
   end
-  local idx = Qf.idx()
+  local idx = Qf.idx(self:win())
   if idx < 1 then
     return {}
   end
@@ -250,7 +291,7 @@ end
 --- so that it doesn't immediately come back.
 ---@param idx? number
 function M:delete(idx)
-  idx = idx or Qf.idx()
+  idx = idx or Qf.idx(self:win())
   if not idx or idx < 1 then
     return
   end

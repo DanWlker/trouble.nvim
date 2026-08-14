@@ -62,6 +62,8 @@ M.config = {
         { event = "LspAttach", main = true },
       },
       source = "lsp.document_symbols",
+      -- symbols only ever describe the current buffer
+      list = "loclist",
       sort = { "filename", "pos", "text" },
       -- sort = { { buf = 0 }, { kind = "Function" }, "filename", "pos", "text" },
       -- `{indent}` keeps the symbol hierarchy readable in the flat quickfix list

@@ -8,9 +8,13 @@ This is a fork of [trouble.nvim](https://github.com/folke/trouble.nvim) with its
 custom window UI removed. You get trouble's sources, filters, sorters and modes;
 Neovim does everything else.
 
-Trouble's entire job is to **fill the quickfix list and keep it fresh**. It never
-opens, closes or focuses a window — `:copen`, `:cclose` and `:cwindow` already do
-that, and they do it better than a plugin option can.
+Trouble's entire job is to **fill a quickfix or location list and keep it fresh**.
+It never opens, closes or focuses a window — `:copen`, `:cclose` and `:cwindow`
+(or their `:l...` counterparts) already do that, and better than a plugin option can.
+
+Project-wide results go to the **quickfix list**. Buffer-scoped results — document
+symbols, diagnostics for the current buffer — go to that window's **location
+list**, because that is what location lists are for.
 
 ## ✨ Features
 
@@ -74,18 +78,25 @@ Install the plugin with your preferred package manager:
   cmd = "Trouble",
   keys = {
     { "<leader>xx", "<cmd>Trouble diagnostics<cr>", desc = "Diagnostics (Trouble)" },
-    { "<leader>xX", "<cmd>Trouble diagnostics filter.buf=0<cr>", desc = "Buffer Diagnostics (Trouble)" },
+    { "<leader>xX", "<cmd>Trouble diagnostics_buffer<cr>", desc = "Buffer Diagnostics (Trouble)" },
     { "<leader>cs", "<cmd>Trouble symbols<cr>", desc = "Symbols (Trouble)" },
     { "<leader>cl", "<cmd>Trouble lsp<cr>", desc = "LSP Definitions / references / ... (Trouble)" },
   },
   init = function()
-    -- open the quickfix window when a Trouble mode produced results,
-    -- and close it when it didn't. This is the `auto_open`/`auto_close`
-    -- of the original plugin, done by Neovim.
+    -- open the list window when a Trouble mode produced results, and close it
+    -- when it didn't. This is the `auto_open`/`auto_close` of the original
+    -- plugin, done by Neovim. `Trouble` is the quickfix half, `lTrouble` the
+    -- location list half, mirroring Vim's own `grep` / `lgrep` patterns.
     vim.api.nvim_create_autocmd("QuickFixCmdPost", {
       pattern = "Trouble",
       callback = function()
         vim.cmd("cwindow")
+      end,
+    })
+    vim.api.nvim_create_autocmd("QuickFixCmdPost", {
+      pattern = "lTrouble",
+      callback = function()
+        vim.cmd("lwindow")
       end,
     })
   end,
@@ -112,11 +123,16 @@ you open it yourself with `:copen`, exactly like `:vimgrep` or `:make`.
 
 ---@class trouble.Config
 ---@field mode? string
+---@field list? "quickfix"|"loclist"
 ---@field config? fun(opts:trouble.Config)
 ---@field formatters? table<string,trouble.Formatter> custom formatters
 ---@field filters? table<string, trouble.FilterFn> custom filters
 ---@field sorters? table<string, trouble.SorterFn> custom sorters
 local defaults = {
+  -- Where results go. Buffer-scoped modes default to "loclist", since a
+  -- location list is window-local; project-wide modes use the quickfix list.
+  ---@type "quickfix"|"loclist"
+  list = "quickfix",
   auto_refresh = true, -- keep the list in sync while it is the current one
   auto_jump = false, -- jump to the item when there's only one
   max_items = 200, -- limit number of items that can be displayed per section
@@ -146,6 +162,15 @@ local defaults = {
         -- don't include the current location in the results
         include_current = false,
       },
+    },
+    -- diagnostics for the current buffer only. Buffer-scoped, so it belongs
+    -- in the window's location list rather than the global quickfix list.
+    diagnostics_buffer = {
+      desc = "buffer diagnostics",
+      mode = "diagnostics",
+      title = "Buffer Diagnostics",
+      list = "loclist",
+      filter = { buf = 0 },
     },
     -- more advanced example that extends the lsp_document_symbols
     symbols = {
@@ -249,20 +274,44 @@ pushing a new one onto the stack.
 Trouble fills the list and stops there. Everything you'd do with the results is
 a quickfix command, and trouble deliberately provides no equivalent:
 
-| Task | Use |
-| --- | --- |
-| Open / close the window | `:copen` / `:cclose` |
-| Open if there are results, close if not | `:cwindow` |
-| Jump to an entry | `<CR>` in the quickfix window, or `:cc` |
-| Open in a split / vsplit | `Ctrl-W Enter`, or `:vsplit \| cc` |
-| Next / previous entry | `:cnext` / `:cprev` |
-| First / last entry | `:cfirst` / `:clast` |
-| Run a command over every entry | `:cdo` |
-| Switch between mode lists | `:colder` / `:cnewer` / `:chistory` |
+| Task | Quickfix | Location list |
+| --- | --- | --- |
+| Open / close the window | `:copen` / `:cclose` | `:lopen` / `:lclose` |
+| Open if there are results, close if not | `:cwindow` | `:lwindow` |
+| Jump to an entry | `<CR>`, or `:cc` | `<CR>`, or `:ll` |
+| Open in a split | `Ctrl-W Enter` | `Ctrl-W Enter` |
+| Next / previous entry | `:cnext` / `:cprev` | `:lnext` / `:lprev` |
+| First / last entry | `:cfirst` / `:clast` | `:lfirst` / `:llast` |
+| Run a command over every entry | `:cdo` | `:ldo` |
+| Switch between mode lists | `:colder` / `:cnewer` | `:lolder` / `:lnewer` |
 
-After writing to the list, trouble fires **`QuickFixCmdPost`** with a `Trouble`
-pattern — the same hook `:vimgrep` and `:make` use. So the standard idiom gets
-you automatic show/hide, on the initial load *and* on every auto refresh:
+### Which list does a mode use?
+
+| Mode | List | Why |
+| --- | --- | --- |
+| `diagnostics` | quickfix | spans the whole project |
+| `diagnostics_buffer` | location | one buffer |
+| `lsp_document_symbols`, `symbols` | location | one buffer |
+| every other `lsp_*` mode | quickfix | results span the project |
+
+Override it per mode or per call with `list=quickfix` / `list=loclist`:
+
+```vim
+:Trouble diagnostics list=loclist    " just this buffer's window
+:Trouble symbols list=quickfix
+```
+
+A location list belongs to the window that was current when you loaded the mode.
+Load it again from another window and it retargets there, leaving the first
+window's list intact. Close the window and the list goes with it.
+
+### Getting the window to show up
+
+After writing to the list, trouble fires **`QuickFixCmdPost`** — the same hook
+`:vimgrep` and `:make` use — with pattern `Trouble` for the quickfix list and
+`lTrouble` for a location list, mirroring Vim's own `grep` / `lgrep` naming. So
+the standard idiom gets you automatic show/hide, on the initial load *and* on
+every auto refresh:
 
 ```lua
 vim.api.nvim_create_autocmd("QuickFixCmdPost", {
@@ -273,8 +322,21 @@ vim.api.nvim_create_autocmd("QuickFixCmdPost", {
 })
 ```
 
-If you already have `autocmd QuickFixCmdPost [^l]* cwindow` in your config, it
-matches `Trouble` and this works with no changes.
+```lua
+vim.api.nvim_create_autocmd("QuickFixCmdPost", {
+  pattern = "lTrouble",
+  callback = function()
+    vim.cmd("lwindow")
+  end,
+})
+```
+
+If you already have the classic pair in your config, both already match:
+
+```vim
+autocmd QuickFixCmdPost [^l]* cwindow
+autocmd QuickFixCmdPost l*    lwindow
+```
 
 The actions that remain are the ones the quickfix list can't do for itself,
 because they act on trouble's items rather than on the window:
@@ -297,6 +359,7 @@ Modes:
 <!-- modes:start -->
 
 - **diagnostics**: diagnostics
+- **diagnostics_buffer**: buffer diagnostics
 - **lsp**: LSP definitions, references, implementations, type definitions, and declarations
 - **lsp_command**: command
 - **lsp_declarations**: declarations
@@ -340,8 +403,9 @@ require("trouble").refresh(opts)
 ---@param opts? trouble.Mode|string
 require("trouble").get_items(opts)
 
--- Returns the number of items in the quickfix list.
-require("trouble").count()
+-- Returns the number of entries in the list a mode writes to.
+---@param opts? trouble.Mode|string
+require("trouble").count(opts)
 
 -- Remove the item under the cursor from the list.
 -- This also disables auto refresh, so it doesn't come straight back.

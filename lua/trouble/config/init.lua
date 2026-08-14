@@ -7,12 +7,17 @@ local M = {}
 
 ---@class trouble.Config
 ---@field mode? string
+---@field list? "quickfix"|"loclist"
 ---@field config? fun(opts:trouble.Config)
 ---@field formatters? table<string,trouble.Formatter> custom formatters
 ---@field filters? table<string, trouble.FilterFn> custom filters
 ---@field sorters? table<string, trouble.SorterFn> custom sorters
 local defaults = {
   debug = false,
+  -- Where results go. Buffer-scoped modes default to "loclist", since a
+  -- location list is window-local; project-wide modes use the quickfix list.
+  ---@type "quickfix"|"loclist"
+  list = "quickfix",
   auto_refresh = true, -- keep the list in sync while it is the current one
   auto_jump = false, -- jump to the item when there's only one
   max_items = 200, -- limit number of items that can be displayed per section
@@ -42,6 +47,15 @@ local defaults = {
         -- don't include the current location in the results
         include_current = false,
       },
+    },
+    -- diagnostics for the current buffer only. Buffer-scoped, so it belongs
+    -- in the window's location list rather than the global quickfix list.
+    diagnostics_buffer = {
+      desc = "buffer diagnostics",
+      mode = "diagnostics",
+      title = "Buffer Diagnostics",
+      list = "loclist",
+      filter = { buf = 0 },
     },
     -- more advanced example that extends the lsp_document_symbols
     symbols = {

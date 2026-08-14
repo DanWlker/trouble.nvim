@@ -101,102 +101,158 @@ function M.entries(items, format, opts)
   return ret
 end
 
---- Returns the id of the current quickfix list, or `0` when the stack is empty.
----@return number
-function M.current()
-  return vim.fn.getqflist({ id = 0 }).id or 0
+--- Every function below takes a `win`:
+---   * `nil`    -> the quickfix list
+---   * a winid  -> that window's location list
+--- Location lists are window-local, which is what makes them the right home for
+--- buffer-scoped results (document symbols, diagnostics for the current buffer).
+
+---@param win? number
+---@param what table
+local function get(win, what)
+  if win then
+    return vim.fn.getloclist(win, what)
+  end
+  return vim.fn.getqflist(what)
 end
 
---- True when `id` still refers to a list in the quickfix stack.
+---@param win? number
+---@param action string
+---@param what table
+local function set(win, action, what)
+  if win then
+    return vim.fn.setloclist(win, {}, action, what)
+  end
+  return vim.fn.setqflist({}, action, what)
+end
+
+--- Returns the id of the current list, or `0` when the stack is empty.
+---@param win? number
+---@return number
+function M.current(win)
+  return get(win, { id = 0 }).id or 0
+end
+
+--- True when `id` still refers to a list in the stack.
+---@param win? number
 ---@param id? number
-function M.exists(id)
+function M.exists(win, id)
   if not id or id == 0 then
     return false
   end
-  return vim.fn.getqflist({ id = id, nr = 0 }).id == id
+  if win and not vim.api.nvim_win_is_valid(win) then
+    return false
+  end
+  return get(win, { id = id, nr = 0 }).id == id
 end
 
---- True when `id` is the list the quickfix commands currently operate on.
+--- True when `id` is the list that `:cnext`/`:lnext` currently operate on.
+---@param win? number
 ---@param id? number
-function M.is_current(id)
-  return id ~= nil and id ~= 0 and M.current() == id
+function M.is_current(win, id)
+  if id == nil or id == 0 then
+    return false
+  end
+  if win and not vim.api.nvim_win_is_valid(win) then
+    return false
+  end
+  return M.current(win) == id
 end
 
---- Creates a new quickfix list and returns its id.
+--- Creates a new list and returns its id.
+---@param win? number
 ---@param entries trouble.Qf.entry[]
 ---@param title string
 ---@return number id
-function M.create(entries, title)
-  vim.fn.setqflist({}, " ", { title = title, items = entries })
-  return M.current()
+function M.create(win, entries, title)
+  set(win, " ", { title = title, items = entries })
+  return M.current(win)
 end
 
---- Replaces the contents of an existing quickfix list, keeping its position in
---- the stack, the current entry, and the cursor position in the quickfix window.
+--- Replaces the contents of an existing list, keeping its position in the
+--- stack, the current entry, and the cursor position in its window.
 --- Without this, every auto refresh would send `:cnext` back to the first entry.
+---@param win? number
 ---@param id number
 ---@param entries trouble.Qf.entry[]
 ---@param title string
-function M.replace(id, entries, title)
-  local win = M.is_current(id) and M.win() or nil
-  local cursor = win and vim.api.nvim_win_get_cursor(win) or nil
-  local idx = vim.fn.getqflist({ id = id, idx = 0 }).idx or 0
+function M.replace(win, id, entries, title)
+  local lwin = M.is_current(win, id) and M.win(win) or nil
+  local cursor = lwin and vim.api.nvim_win_get_cursor(lwin) or nil
+  local idx = get(win, { id = id, idx = 0 }).idx or 0
 
   local what = { id = id, title = title, items = entries }
   if idx > 0 and #entries > 0 then
     what.idx = math.min(idx, #entries)
   end
-  vim.fn.setqflist({}, "r", what)
+  set(win, "r", what)
 
-  if win and cursor and vim.api.nvim_win_is_valid(win) then
-    local lines = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(win))
+  if lwin and cursor and vim.api.nvim_win_is_valid(lwin) then
+    local lines = vim.api.nvim_buf_line_count(vim.api.nvim_win_get_buf(lwin))
     cursor[1] = math.max(1, math.min(cursor[1], lines))
-    pcall(vim.api.nvim_win_set_cursor, win, cursor)
+    pcall(vim.api.nvim_win_set_cursor, lwin, cursor)
   end
 end
 
 --- Makes the list with the given id the current one.
+---@param win? number
 ---@param id number
-function M.activate(id)
-  if M.is_current(id) or not M.exists(id) then
+function M.activate(win, id)
+  if M.is_current(win, id) or not M.exists(win, id) then
     return
   end
-  local nr = vim.fn.getqflist({ id = id, nr = 0 }).nr
-  if nr and nr > 0 then
+  local nr = get(win, { id = id, nr = 0 }).nr
+  if not (nr and nr > 0) then
+    return
+  end
+  if win then
+    vim.api.nvim_win_call(win, function()
+      pcall(vim.cmd, ("silent %dlhistory"):format(nr))
+    end)
+  else
     pcall(vim.cmd, ("silent %dchistory"):format(nr))
   end
 end
 
---- Returns the window id of the quickfix window, if it is open.
---- Only used to keep the cursor steady across a rewrite. Opening and closing
---- the window is `:copen` / `:cclose` / `:cwindow`, and is left to the user.
+--- The window displaying the list, if it is open.
+--- Only used to keep the cursor steady across a rewrite. Opening and closing is
+--- `:copen`/`:cclose`/`:cwindow` (or `:lopen`/`:lclose`/`:lwindow`), and is
+--- left to the user.
+---@param win? number
 ---@return number?
-function M.win()
-  for _, win in ipairs(vim.fn.getwininfo()) do
-    if win.quickfix == 1 and win.loclist == 0 then
-      return win.winid
-    end
+function M.win(win)
+  if win and not vim.api.nvim_win_is_valid(win) then
+    return nil
   end
+  local id = get(win, { winid = 0 }).winid or 0
+  return id ~= 0 and id or nil
 end
 
---- Fires `QuickFixCmdPost` with a `Trouble` pattern, the same way `:vimgrep`
---- and `:make` do, so that the usual `cwindow` autocmd picks up the results.
-function M.post()
-  vim.api.nvim_exec_autocmds("QuickFixCmdPost", { pattern = "Trouble", modeline = false })
+--- Fires `QuickFixCmdPost` the way `:vimgrep` and `:lvimgrep` do, so the usual
+--- `cwindow`/`lwindow` autocmds pick the results up. The pattern mirrors Vim's
+--- own `grep` vs `lgrep` naming, so `[^l]*` and `l*` filters keep working.
+---@param win? number
+function M.post(win)
+  vim.api.nvim_exec_autocmds("QuickFixCmdPost", {
+    pattern = win and "lTrouble" or "Trouble",
+    modeline = false,
+  })
 end
 
 --- Index of the entry the quickfix commands currently point at.
 ---@return number
-function M.idx()
-  local win = M.win()
-  if win and vim.api.nvim_get_current_win() == win then
-    return vim.api.nvim_win_get_cursor(win)[1]
+---@param win? number
+function M.idx(win)
+  local lwin = M.win(win)
+  if lwin and vim.api.nvim_get_current_win() == lwin then
+    return vim.api.nvim_win_get_cursor(lwin)[1]
   end
-  return vim.fn.getqflist({ idx = 0 }).idx or 0
+  return get(win, { idx = 0 }).idx or 0
 end
 
-function M.count()
-  return vim.fn.getqflist({ size = 0 }).size or 0
+---@param win? number
+function M.count(win)
+  return get(win, { size = 0 }).size or 0
 end
 
 return M

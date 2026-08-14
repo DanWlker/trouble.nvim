@@ -13,11 +13,34 @@ vim.api.nvim_create_autocmd("QuickFixCmdPost", {
     vim.cmd("cwindow")
   end,
 })
+vim.api.nvim_create_autocmd("QuickFixCmdPost", {
+  pattern = "lTrouble",
+  callback = function()
+    vim.cmd("lwindow")
+  end,
+})
 ```
 
-`:cwindow` opens the window when the list is non-empty and closes it when it is
-empty, so this covers what `auto_open` and `auto_close` used to do — on the
-initial load and on every auto refresh.
+`:cwindow` / `:lwindow` open the window when the list is non-empty and close it
+when it is empty, so this covers what `auto_open` and `auto_close` used to do —
+on the initial load and on every auto refresh.
+
+### Send a mode to the other list
+
+```vim
+:Trouble diagnostics list=loclist   " only this window
+:Trouble symbols list=quickfix      " share it across windows
+```
+
+Or make it the default for a mode:
+
+```lua
+{
+  modes = {
+    diagnostics = { list = "loclist" },
+  },
+}
+```
 
 ### A taller window at the top
 
@@ -48,12 +71,16 @@ put a shortened path in the entry text as well:
 
 ### Diagnostics for the current buffer only
 
+This one is built in as `diagnostics_buffer`, and because it is buffer-scoped it
+writes to the window's location list:
+
 ```lua
 {
   modes = {
     diagnostics_buffer = {
       mode = "diagnostics", -- inherit from diagnostics mode
       filter = { buf = 0 }, -- filter diagnostics to the current buffer
+      list = "loclist",     -- window-local, since the results are too
     },
   }
 }

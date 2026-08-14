@@ -152,9 +152,11 @@ function M.get_items(opts)
   return list and list:items() or {}
 end
 
--- Returns the number of items in the quickfix list.
-function M.count()
-  return Qf.count()
+-- Returns the number of entries in the list a mode writes to.
+---@param opts? trouble.Mode|string
+function M.count(opts)
+  local list = M._find(opts)
+  return Qf.count(list and list:win() or nil)
 end
 
 return setmetatable(M, {
