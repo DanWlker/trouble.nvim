@@ -1,5 +1,3 @@
-local Preview = require("trouble.view.preview")
-
 ---@class trouble.Main
 ---@field win number
 ---@field buf number
@@ -39,12 +37,11 @@ function M._valid(win, buf)
   if vim.api.nvim_win_get_buf(win) ~= buf then
     return false
   end
-  if Preview.is_win(win) or vim.w[win].trouble then
-    return false
-  end
   if vim.api.nvim_win_get_config(win).relative ~= "" then
     return false
   end
+  -- this also excludes the quickfix and location list windows,
+  -- since they have a `quickfix` buftype
   if vim.bo[buf].buftype ~= "" then
     return false
   end

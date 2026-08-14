@@ -5,19 +5,16 @@ local Util = require("trouble.util")
 
 ---@alias trouble.Sort.spec string|trouble.SorterFn|(string|trouble.SorterFn|trouble.Filter.spec)[]
 ---@alias trouble.Filter.spec table<string, any>|fun(items: trouble.Item[]): trouble.Item[]
----@alias trouble.Group.spec string|string[]|{format?:string}
 
 ---@alias trouble.Sections.spec (trouble.Section.spec|string)[]
 
 ---@class trouble.Section.spec
 ---@field source string
----@field title? string|boolean
+---@field title? string shown in the quickfix list title
 ---@field events? (string|trouble.Event)[]
----@field groups? trouble.Group.spec[]|trouble.Group.spec
 ---@field sort? trouble.Sort.spec
 ---@field filter? trouble.Filter.spec
----@field flatten? boolean when true, items with a natural hierarchy will be flattened
----@field format? string
+---@field format? string template used to build the quickfix entry text
 ---@field max_items? number
 ---@field params? table<string, any>
 
@@ -34,16 +31,10 @@ local Util = require("trouble.util")
 ---@field filter? trouble.Filter
 ---@field desc? boolean
 
----@class trouble.Group
----@field fields? string[]
----@field format? string
----@field directory? boolean
-
 ---@class trouble.Section.opts
 ---@field source string
----@field groups trouble.Group[]
+---@field title? string
 ---@field format string
----@field flatten? boolean when true, items with a natural hierarchy will be flattened
 ---@field events trouble.Event[]
 ---@field sort? trouble.Sort[]
 ---@field filter? trouble.Filter
@@ -55,8 +46,6 @@ local M = {}
 ---@param spec trouble.Section.spec|string
 ---@return trouble.Section.opts
 function M.section(spec)
-  local groups = type(spec.groups) == "string" and { spec.groups } or spec.groups
-  ---@cast groups trouble.Group.spec[]
   local events = {} ---@type trouble.Event[]
   for _, e in ipairs(spec.events or {}) do
     if type(e) == "string" then
@@ -70,21 +59,17 @@ function M.section(spec)
     end
   end
 
-  local ret = {
+  return {
     source = spec.source,
-    groups = vim.tbl_map(M.group, groups or {}),
+    title = type(spec.title) == "string" and spec.title or nil,
     sort = spec.sort and M.sort(spec.sort) or nil,
     filter = spec.filter,
-    format = spec.format or "{filename} {pos}",
+    -- the quickfix list already shows the filename and position,
+    -- so the default entry text is just the item's text
+    format = spec.format or "{text}",
     events = events,
-    flatten = spec.flatten,
     params = spec.params,
   }
-  -- A title is just a group without fields
-  if spec.title then
-    table.insert(ret.groups, 1, { fields = {}, format = spec.title })
-  end
-  return ret
 end
 
 ---@param action trouble.Action.spec
@@ -151,44 +136,6 @@ function M.sort(spec)
     end
   end
   return fields
-end
-
----@param spec trouble.Group.spec
----@return trouble.Group
-function M.group(spec)
-  spec = type(spec) == "string" and { spec } or spec
-  ---@cast spec string[]|{format?:string}
-  ---@type trouble.Group
-  local ret = { fields = {}, format = "" }
-  for k, v in pairs(spec) do
-    if type(k) == "number" then
-      ---@cast v string
-      ret.fields[#ret.fields + 1] = v
-    elseif k == "format" then
-      ---@cast v string
-      ret[k] = v
-    else
-      error("invalid `group` key: " .. k)
-    end
-  end
-  if vim.tbl_contains(ret.fields, "directory") then
-    ret.directory = true
-    ret.format = ret.format == "" and "{directory_icon} {directory} {count}" or ret.format
-    if #ret.fields > 1 then
-      error("group: cannot specify other fields with `directory`")
-    end
-    ret.fields = nil
-  end
-  if ret.format == "" then
-    ret.format = table.concat(
-      ---@param f string
-      vim.tbl_map(function(f)
-        return "{" .. f .. "}"
-      end, ret.fields),
-      " "
-    )
-  end
-  return ret
 end
 
 return M

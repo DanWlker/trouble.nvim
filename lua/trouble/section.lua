@@ -1,10 +1,8 @@
 local Filter = require("trouble.filter")
-local Main = require("trouble.view.main")
-local Preview = require("trouble.view.preview")
+local Main = require("trouble.main")
 local Promise = require("trouble.promise")
 local Sort = require("trouble.sort")
 local Sources = require("trouble.sources")
-local Tree = require("trouble.tree")
 local Util = require("trouble.util")
 
 ---@class trouble.Section
@@ -13,11 +11,11 @@ local Util = require("trouble.util")
 ---@field private _main? trouble.Main
 ---@field opts trouble.Config
 ---@field items trouble.Item[]
----@field node? trouble.Node
 ---@field fetching boolean
 ---@field filter? trouble.Filter
 ---@field id number
 ---@field on_update? fun(self: trouble.Section)
+---@field enabled? fun():boolean gates auto refresh, set by the owning list
 ---@field _refresh fun()
 local M = {}
 M._id = 0
@@ -52,12 +50,6 @@ end
 
 ---@param opts? {update?: boolean}
 function M:refresh(opts)
-  -- if self.section.source ~= "lsp.document_symbols" then
-  --   Util.debug("Section Refresh", {
-  --     id = self.id,
-  --     source = self.section.source,
-  --   })
-  -- end
   self.fetching = true
   return Promise.new(function(resolve)
     self:main_call(function(main)
@@ -68,8 +60,11 @@ function M:refresh(opts)
           items = Filter.filter(items, self.filter, ctx)
         end
         items = Sort.sort(items, self.section.sort, ctx)
+        local max_items = self.section.max_items
+        if max_items and #items > max_items then
+          items = vim.list_slice(items, 1, max_items)
+        end
         self.items = items
-        self.node = Tree.build(items, self.section)
         if not (opts and opts.update == false) then
           self:update()
         end
@@ -93,10 +88,6 @@ function M:main_call(fn)
     return
   end
 
-  if Preview.is_win(main.win) then
-    return
-  end
-
   local current = {
     win = vim.api.nvim_get_current_win(),
     buf = vim.api.nvim_get_current_buf(),
@@ -116,6 +107,10 @@ function M:main_call(fn)
       "Current: " .. vim.api.nvim_buf_get_name(vim.api.nvim_win_get_buf(main.win)),
     })
   end
+end
+
+function M:count()
+  return #self.items
 end
 
 function M:update()
@@ -151,6 +146,10 @@ function M:listen()
           return true
         end
         if not this.opts.auto_refresh then
+          return
+        end
+        -- don't keep fetching for a list that nothing is looking at
+        if this.enabled and not this.enabled() then
           return
         end
         if not vim.api.nvim_buf_is_valid(e.buf) then

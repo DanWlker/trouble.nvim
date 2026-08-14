@@ -2,11 +2,9 @@ local Config = require("trouble.config")
 local Util = require("trouble.util")
 
 ---@class trouble.Source
----@field highlights? table<string, string>
 ---@field config? trouble.Config
 ---@field setup? fun()
 ---@field get trouble.Source.get|table<string, trouble.Source.get>
----@field preview? fun(item:trouble.Item, ctx:trouble.Preview)
 
 ---@alias trouble.Source.ctx {main: trouble.Main, opts:trouble.Mode}
 ---@alias trouble.Source.Callback fun(items:trouble.Item[])
@@ -27,7 +25,6 @@ function M.register(name, source)
     if source.setup then
       source.setup()
     end
-    require("trouble.config.highlights").source(name, source.highlights)
     if source.config then
       Config.defaults(source.config)
     end

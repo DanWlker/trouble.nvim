@@ -2,19 +2,6 @@ local Util = require("trouble.util")
 
 local M = {}
 
----@class trouble.ViewFilter.opts
----@field id? string
----@field template? string
----@field data? table<string, any>
----@field toggle? boolean
----@field del? boolean
-
----@class trouble.ViewFilter
----@field id string
----@field filter trouble.Filter
----@field template? string
----@field data? table<string, any>
-
 ---@param opts? {lines:boolean}
 ---@param range trouble.Range
 ---@param pos trouble.Pos

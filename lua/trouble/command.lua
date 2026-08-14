@@ -13,7 +13,7 @@ function M.complete(prefix, line, col)
   local candidates = {} ---@type string[]
   if vim.tbl_isempty(parsed.opts) then
     if not parsed.mode then
-      vim.list_extend(candidates, Config.modes())
+      vim.list_extend(candidates, M.modes())
     else
       if not parsed.action then
         vim.list_extend(candidates, M.actions())
@@ -50,27 +50,6 @@ function M.complete_opts()
       end
     end
   end
-  vim.list_extend(candidates, {
-    "new=true",
-  })
-  for _, w in ipairs({ "win", "preview" }) do
-    local winopts = {
-      "type=float",
-      "type=split",
-      "position=top",
-      "position=bottom",
-      "position=left",
-      "position=right",
-      "relative=editor",
-      "relative=win",
-    }
-    vim.list_extend(
-      candidates,
-      vim.tbl_map(function(x)
-        return w .. "." .. x
-      end, winopts)
-    )
-  end
   return candidates
 end
 
@@ -80,11 +59,19 @@ function M.actions()
   return actions
 end
 
+--- Configured modes, plus the special `last` mode that reopens
+--- whichever mode was used last.
+function M.modes()
+  local modes = Config.modes()
+  modes[#modes + 1] = "last"
+  return modes
+end
+
 ---@param input string
 function M.parse(input)
   ---@type {mode: string, action: string, opts: trouble.Config, errors: string[], args: string[]}
   local ret = Parser.parse(input)
-  local modes = Config.modes()
+  local modes = M.modes()
   local actions = M.actions()
 
   -- Args can be mode and/or action

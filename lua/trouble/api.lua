@@ -1,90 +1,130 @@
-local Actions = require("trouble.config.actions")
 local Config = require("trouble.config")
+local List = require("trouble.list")
+local Qf = require("trouble.qf")
 local Util = require("trouble.util")
-local View = require("trouble.view")
 
----@alias trouble.ApiFn fun(opts?: trouble.Config|string): trouble.View
+---@alias trouble.ApiFn fun(opts?: trouble.Config|string): trouble.List
 
 ---@class trouble.api: trouble.actions
 local M = {}
 M.last_mode = nil ---@type string?
 
---- Finds all open views matching the filter.
----@param opts? trouble.Config|string
----@param filter? trouble.View.filter
----@return trouble.View[], trouble.Config
-function M._find(opts, filter)
-  opts = Config.get(opts)
-  if opts.mode == "last" then
-    opts.mode = M.last_mode
-    opts = Config.get(opts)
+--- Options that only steer this call, and never justify rebuilding a list.
+local transient = { mode = true, refresh = true, focus = true, _action = true }
+
+--- Signature of the extra options passed to `open`. When it changes,
+--- the list is rebuilt so that things like `filter.buf=0` take effect.
+--- Returns `nil` when no meaningful options were given.
+---@param opts table
+---@return string?
+local function signature(opts)
+  local ret = {} ---@type table<string, any>
+  local count = 0
+  for k, v in pairs(opts) do
+    if not transient[k] then
+      ret[k] = v
+      count = count + 1
+    end
   end
-  M.last_mode = opts.mode or M.last_mode
-  filter = filter or { open = true, mode = opts.mode }
-  return vim.tbl_map(function(v)
-    return v.view
-  end, View.get(filter)), opts
+  return count > 0 and vim.inspect(ret, { newline = "", indent = "" }) or nil
 end
 
---- Finds the last open view matching the filter.
----@param opts? trouble.Mode|string
----@param filter? trouble.View.filter
----@return trouble.View?, trouble.Mode
-function M._find_last(opts, filter)
-  local views, _opts = M._find(opts, filter)
-  ---@cast _opts trouble.Mode
-  return views[#views], _opts
+--- Resolves the options and finds the list for the resulting mode.
+--- When no mode is given, this falls back to the list that owns the
+--- current quickfix list, and then to the last mode that was opened.
+---@param opts? trouble.Config|string
+---@return trouble.List?, trouble.Mode
+function M._find(opts)
+  if type(opts) == "string" then
+    opts = { mode = opts }
+  end
+  opts = opts or {}
+
+  local resolved = Config.get(opts)
+
+  -- `Config.get` keeps the first mode it sees, so the mode has to be
+  -- replaced on the resolved options and then resolved again.
+  if resolved.mode == "last" then
+    resolved.mode = M.last_mode
+    resolved = Config.get(resolved)
+  end
+
+  if not resolved.mode then
+    local list = List.active() or List.get(M.last_mode)
+    if list and list.opts.mode then
+      resolved.mode = list.opts.mode
+      resolved = Config.get(resolved)
+    end
+  end
+
+  M.last_mode = resolved.mode or M.last_mode
+  ---@cast resolved trouble.Mode
+  return List.get(resolved.mode), resolved
 end
 
 -- Opens trouble with the given mode.
--- If a view is already open with the same mode,
--- it will be focused unless `opts.focus = false`.
--- When a view is already open and `opts.new = true`,
--- a new view will be created.
----@param opts? trouble.Mode | { new?: boolean, refresh?: boolean } | string
----@return trouble.View?
+-- The results are written to the quickfix list and the quickfix
+-- window is opened, unless `opts.focus = false`.
+---@param opts? trouble.Mode | { refresh?: boolean } | string
+---@return trouble.List?
 function M.open(opts)
   opts = opts or {}
-  local view, _opts = M._find_last(opts)
-  if not view or _opts.new then
+  if type(opts) == "string" then
+    opts = { mode = opts }
+  end
+
+  local list, _opts = M._find(opts)
+  local sig = signature(opts)
+
+  -- rebuild the list when it was created with different options.
+  -- action proxies never rebuild, they just act on what is there.
+  local old = list
+  if old and not opts._action and old._sig ~= sig then
+    old:stop()
+    list = nil
+  end
+
+  if not list then
     if not _opts.mode then
       return Util.error("No mode specified")
     elseif not vim.tbl_contains(Config.modes(), _opts.mode) then
       return Util.error("Invalid mode `" .. _opts.mode .. "`")
     end
-    view = View.new(_opts)
-  end
-  if view then
-    if view:is_open() then
-      if opts.refresh ~= false then
-        view:refresh()
-      end
-    else
-      view:open()
+    list = List.new(_opts)
+    -- keep using the quickfix list of the mode we replaced,
+    -- so that changing options doesn't stack up new lists
+    if old then
+      list.qf_id = old.qf_id
     end
-    if _opts.focus ~= false then
-      view:wait(function()
-        view.win:focus()
-      end)
-    end
+    list._sig = sig
+  elseif not opts._action then
+    list._sig = sig
   end
-  return view
+
+  if list:is_open() then
+    if opts.refresh ~= false then
+      list:refresh()
+    end
+  else
+    list:open()
+  end
+  return list
 end
 
--- Closes the last open view matching the filter.
+-- Closes the quickfix window when it shows the results of the given mode.
 ---@param opts? trouble.Mode|string
----@return trouble.View?
+---@return trouble.List?
 function M.close(opts)
-  local view = M._find_last(opts)
-  if view then
-    view:close()
-    return view
+  local list = M._find(opts)
+  if list then
+    list:close()
+    return list
   end
 end
 
--- Toggle the view with the given mode.
+-- Toggle the given mode.
 ---@param opts? trouble.Mode|string
----@return trouble.View?
+---@return trouble.List?
 function M.toggle(opts)
   if M.is_open(opts) then
     ---@diagnostic disable-next-line: return-type-mismatch
@@ -94,22 +134,31 @@ function M.toggle(opts)
   end
 end
 
--- Returns true if there is an open view matching the mode.
+-- Returns true when the quickfix window is open and shows the given mode.
 ---@param opts? trouble.Mode|string
 function M.is_open(opts)
-  return M._find_last(opts) ~= nil
+  local list = M._find(opts)
+  return list ~= nil and list:is_open()
 end
 
--- Refresh all open views. Normally this is done automatically,
--- unless you disabled auto refresh.
+-- Refresh the given mode, or all modes when none is given.
+-- Normally this is done automatically, unless you disabled auto refresh.
 ---@param opts? trouble.Mode|string
 function M.refresh(opts)
-  for _, view in ipairs(M._find(opts)) do
-    view:refresh()
+  if opts == nil then
+    for _, list in ipairs(List.all()) do
+      list:refresh()
+    end
+    return
+  end
+  local list = M._find(opts)
+  if list then
+    -- asking for a specific mode refetches it even when its list isn't active
+    list:refresh({ opening = true })
   end
 end
 
--- Proxy to last view's action.
+-- Proxy to the list's action.
 ---@param action trouble.Action.spec
 function M._action(action)
   return function(opts)
@@ -119,78 +168,34 @@ function M._action(action)
     end
     opts = vim.tbl_deep_extend("force", {
       refresh = false,
+      _action = true,
     }, opts)
-    local view = M.open(opts)
-    if view then
-      view:action(action, opts)
+    local list = M.open(opts)
+    if list then
+      list:action(action, opts)
     end
-    return view
+    return list
   end
 end
 
--- Get all items from the active view for a given mode.
+-- Get all items for a given mode.
 ---@param opts? trouble.Mode|string
 function M.get_items(opts)
-  local view = M._find_last(opts)
-  local ret = {} ---@type trouble.Item[]
-  if view then
-    for _, source in pairs(view.sections) do
-      vim.list_extend(ret, source.items or {})
-    end
-  end
-  return ret
+  local list = M._find(opts)
+  return list and list:items() or {}
 end
 
--- Renders a trouble list as a statusline component.
--- Check the docs for examples.
----@param opts? trouble.Mode|string|{hl_group?:string}
----@return {get: (fun():string), has: (fun():boolean)}
-function M.statusline(opts)
-  local Spec = require("trouble.spec")
-  local Section = require("trouble.view.section")
-  local Render = require("trouble.view.render")
-  opts = Config.get(opts)
-  opts.indent_guides = false
-  opts.icons.indent.ws = ""
-  local renderer = Render.new(opts, {
-    multiline = false,
-    indent = false,
-  })
-  local status = nil ---@type string?
-  ---@cast opts trouble.Mode
+-- Returns the quickfix entries for a given mode, without touching
+-- the quickfix list. Useful to build your own list.
+---@param opts? trouble.Mode|string
+function M.get_entries(opts)
+  local list = M._find(opts)
+  return list and list:entries() or {}
+end
 
-  local s = Spec.section(opts)
-  s.max_items = s.max_items or opts.max_items
-  local section = Section.new(s, opts)
-  section.on_update = function()
-    status = nil
-    if package.loaded["lualine"] then
-      vim.schedule(function()
-        require("lualine").refresh()
-      end)
-    else
-      vim.cmd.redrawstatus()
-    end
-  end
-  section:listen()
-  section:refresh()
-  return {
-    has = function()
-      return section.node and section.node:count() > 0
-    end,
-    get = function()
-      if status then
-        return status
-      end
-      renderer:clear()
-      renderer:sections({ section })
-      status = renderer:statusline()
-      if opts.hl_group then
-        status = require("trouble.config.highlights").fix_statusline(status, opts.hl_group)
-      end
-      return status
-    end,
-  }
+-- Returns the number of items in the quickfix list.
+function M.count()
+  return Qf.count()
 end
 
 return setmetatable(M, {

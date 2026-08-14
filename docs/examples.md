@@ -1,68 +1,36 @@
 # Examples
 
-## Window Options
+## Quickfix Window
 
-### Preview in small float top right
-
-![image](https://github.com/folke/trouble.nvim/assets/292349/f422b8fd-579e-427b-87d3-62daab85d2e0)
+### A taller quickfix window at the top
 
 ```lua
 {
-  modes = {
-    preview_float = {
-      mode = "diagnostics",
-      preview = {
-        type = "float",
-        relative = "editor",
-        border = "rounded",
-        title = "Preview",
-        title_pos = "center",
-        position = { 0, -2 },
-        size = { width = 0.3, height = 0.3 },
-        zindex = 200,
-      },
-    },
+  qf = {
+    open_cmd = "topleft copen",
+    height = 20,
   },
 }
 ```
 
-### Preview in a split to the right of the trouble list
-
-![image](https://github.com/folke/trouble.nvim/assets/292349/adfa02df-b3dd-4c90-af3c-41683c0b5356)
+### Let Neovim decide the height
 
 ```lua
 {
-  modes = {
-    test = {
-      mode = "diagnostics",
-      preview = {
-        type = "split",
-        relative = "win",
-        position = "right",
-        size = 0.3,
-      },
-    },
-  },
+  qf = { height = false },
 }
 ```
 
-### Make Trouble look like v2
+### Show the file name in the entry text
+
+The quickfix window already prints the file name in its own column, but you can
+put a shortened path in the entry text as well:
 
 ```lua
 {
-  icons = {
-    indent = {
-      middle = " ",
-      last = " ",
-      top = " ",
-      ws = "│  ",
-    },
-  },
   modes = {
     diagnostics = {
-      groups = {
-        { "filename", format = "{file_icon} {basename:Title} {count}" },
-      },
+      format = "{basename} {message} {item.source} {code}",
     },
   },
 }
@@ -135,32 +103,36 @@ Once those are resolved, less severe diagnostics will be shown.
 
 ## Other
 
-### Automatically Open Trouble Quickfix
+### Send diagnostics to the quickfix list after a grep
 
 ```lua
 vim.api.nvim_create_autocmd("QuickFixCmdPost", {
   callback = function()
-    vim.cmd([[Trouble qflist open]])
+    vim.cmd([[Trouble diagnostics open focus=false]])
   end,
 })
 ```
 
-Test with something like `:silent grep vim %`
+### Keep the quickfix list in sync while you work
 
-### Open Trouble Quickfix when the qf list opens
-
-> This is **NOT** recommended, since you won't be able to use the quickfix list for other things.
+Any mode with `auto_open` writes to the quickfix list and opens the window as
+soon as there is something to show, and `auto_close` hides it again once the
+list is empty:
 
 ```lua
-
-vim.api.nvim_create_autocmd("BufRead", {
-  callback = function(ev)
-    if vim.bo[ev.buf].buftype == "quickfix" then
-      vim.schedule(function()
-        vim.cmd([[cclose]])
-        vim.cmd([[Trouble qflist open]])
-      end)
-    end
-  end,
-})
+{
+  modes = {
+    diagnostics_auto = {
+      mode = "diagnostics",
+      filter = { buf = 0 },
+      auto_open = true,
+      auto_close = true,
+      focus = false,
+    },
+  },
+}
 ```
+
+Trouble only ever touches the quickfix list it created for a mode. If you push
+your own list with `:grep` or `setqflist()`, auto refresh stops writing until
+you open the trouble mode again.

@@ -1,8 +1,14 @@
 # 🚦 Trouble
 
-A pretty list for showing diagnostics, references, telescope results, quickfix and location lists to help you solve all the trouble your code is causing.
+Collects diagnostics, LSP results and picker results, and puts them in Neovim's
+built-in **quickfix list** — filtered, sorted and formatted, and kept up to date
+while you work.
 
-![image](https://github.com/folke/trouble.nvim/assets/292349/481bc1f7-cb93-432d-8ab6-f54044334b96)
+This is a fork of [trouble.nvim](https://github.com/folke/trouble.nvim) with its
+custom window UI removed. You get trouble's sources, filters, sorters and modes,
+but the results are rendered by the native quickfix window, so `:cnext`,
+`:cprev`, `:cdo`, `<CR>`, `Ctrl-W Enter` and every other quickfix mapping and
+plugin you already use keep working.
 
 ## ✨ Features
 
@@ -13,43 +19,42 @@ A pretty list for showing diagnostics, references, telescope results, quickfix a
 - LSP type definitions
 - LSP Document Symbols
 - LSP Incoming/Outgoing calls
-- quickfix list
-- location list
-- [Telescope](https://github.com/nvim-telescope/telescope.nvim) search results
-- [fzf-lua](https://github.com/ibhagwan/fzf-lua) results
 
-## 📰 What's new?
+All of them land in the quickfix list, filtered, sorted and kept up to date.
 
-This is a full rewrite of the original **trouble.nvim**.
+Pickers are **not** included: Telescope, fzf-lua and snacks.picker all send
+their results to the quickfix list themselves. See [Pickers](#-pickers).
 
-The new version is much more flexible and powerful,
-with a lot of new features and improvements:
+## 📰 What's different from trouble.nvim?
 
-- multiple trouble windows at the same time
-- LSP document symbols
-- LSP incoming/outgoing calls
-- lots of options to configure trouble windows (floats or splits)
-- `focus` option to focus the trouble window when opened (or not)
-- `follow` option to follow the item under the cursor
-- `pinned` option to pin the buffer as the source for the opened trouble window
-- full tree views of anything
-- highly configurable views with custom formatters, filters, and sorters
-- show multiple sections in the same view
-- multi-line messages
-- prettier and configurable indent guides
-- tree view that follows the natural hierarchy of the items (like document symbols, or file structure)
-- expansive API and `Trouble` command
-- trouble `modes` to define custom views
-- statusline component (useful with document symbols)
+Everything that draws a window is gone; everything that produces items stays:
+
+- results are written to the **quickfix list** and shown in the native quickfix window
+- no custom window, no preview window, no folds, no indent guides, no highlight groups
+- no trouble keymaps — the quickfix window keeps its own
+- the `qflist`, `loclist` and `quickfix` modes are gone, since the quickfix list is now the output
+- the `statusline` component is gone
+- the `telescope`, `fzf` and `snacks` sources are gone: those pickers already
+  have a "send to quickfix list" action, which is now the same destination
+- item `groups` are gone: the quickfix list is flat and already shows the filename and position
+- navigation actions (`next`, `prev`, `jump*`, `focus`, `close`, ...) are gone —
+  use `:cnext`, `:cprev`, `:cc`, `:copen`, `:cclose` and friends
+- the actions that remain (`refresh`, `toggle_refresh`, `filter`, `delete`,
+  `inspect`) act on trouble's items, which quickfix can't do itself
+- everything else — sources, `modes`, `filter`, `sort`, `format`, `params`,
+  custom formatters/filters/sorters — works as before
+
+Each mode gets its **own** quickfix list, reused across opens, so switching modes
+doesn't pile up entries in the quickfix stack. A quickfix list that trouble
+doesn't own is never modified.
 
 ## ⚡️ Requirements
 
 - Neovim >= 0.9.2
-- Neovim >= 0.10.0 **OR** the `markdown` and `markdown_inline` [nvim-treesitter](https://github.com/nvim-treesitter/nvim-treesitter) parsers
 - Properly configured Neovim LSP client
-- [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) is optional to enable file icons
-- a theme with properly configured highlight groups for Neovim Diagnostics
-- a [patched font](https://www.nerdfonts.com/) for the default severity and fold icons
+- [nvim-web-devicons](https://github.com/nvim-tree/nvim-web-devicons) or
+  [mini.icons](https://github.com/echasnovski/mini.icons) is optional, to enable icons in entry text
+- a [patched font](https://www.nerdfonts.com/) if you use the kind icons
 
 ## 📦 Installation
 
@@ -80,18 +85,8 @@ Install the plugin with your preferred package manager:
     },
     {
       "<leader>cl",
-      "<cmd>Trouble lsp toggle focus=false win.position=right<cr>",
+      "<cmd>Trouble lsp toggle focus=false<cr>",
       desc = "LSP Definitions / references / ... (Trouble)",
-    },
-    {
-      "<leader>xL",
-      "<cmd>Trouble loclist toggle<cr>",
-      desc = "Location List (Trouble)",
-    },
-    {
-      "<leader>xQ",
-      "<cmd>Trouble qflist toggle<cr>",
-      desc = "Quickfix List (Trouble)",
     },
   },
 }
@@ -119,101 +114,26 @@ Install the plugin with your preferred package manager:
 ---@field filters? table<string, trouble.FilterFn> custom filters
 ---@field sorters? table<string, trouble.SorterFn> custom sorters
 local defaults = {
-  auto_close = false, -- auto close when there are no items
-  auto_open = false, -- auto open when there are items
-  auto_preview = true, -- automatically open preview when on an item
-  auto_refresh = true, -- auto refresh when open
+  auto_close = false, -- close the quickfix window when there are no items
+  auto_open = false, -- open the quickfix window when there are items
+  auto_refresh = true, -- auto refresh while the list is active
   auto_jump = false, -- auto jump to the item when there's only one
-  focus = false, -- Focus the window when opened
-  restore = true, -- restores the last location in the list when opening
-  follow = true, -- Follow the current item
-  indent_guides = true, -- show indent guides
+  focus = true, -- focus the quickfix window when opened
   max_items = 200, -- limit number of items that can be displayed per section
-  multiline = true, -- render multi-line messages
-  pinned = false, -- When pinned, the opened trouble window will be bound to the current buffer
+  pinned = false, -- When pinned, the list will be bound to the current buffer
   warn_no_results = true, -- show a warning when there are no results
-  open_no_results = false, -- open the trouble window when there are no results
-  ---@type trouble.Window.opts
-  win = {}, -- window options for the results window. Can be a split or a floating window.
-  -- Window options for the preview window. Can be a split, floating window,
-  -- or `main` to show the preview in the main editor window.
-  ---@type trouble.Window.opts
-  preview = {
-    type = "main",
-    -- when a buffer is not yet loaded, the preview window will be created
-    -- in a scratch buffer with only syntax highlighting enabled.
-    -- Set to false, if you want the preview to always be a real loaded buffer.
-    scratch = true,
+  open_no_results = false, -- open the quickfix window when there are no results
+  -- Options for the quickfix window itself.
+  ---@type trouble.Qf.opts
+  qf = {
+    open_cmd = "botright copen", -- command used to open the quickfix window
+    height = 10, -- height of the quickfix window. Set to `false` for the Neovim default.
   },
   -- Throttle/Debounce settings. Should usually not be changed.
   ---@type table<string, number|{ms:number, debounce?:boolean}>
   throttle = {
     refresh = 20, -- fetches new data when needed
-    update = 10, -- updates the window
-    render = 10, -- renders the window
-    follow = 100, -- follows the current item
-    preview = { ms = 100, debounce = true }, -- shows the preview for the current item
-  },
-  -- Key mappings can be set to the name of a builtin action,
-  -- or you can define your own custom action.
-  ---@type table<string, trouble.Action.spec|false>
-  keys = {
-    ["?"] = "help",
-    r = "refresh",
-    R = "toggle_refresh",
-    q = "close",
-    o = "jump_close",
-    ["<esc>"] = "cancel",
-    ["<cr>"] = "jump",
-    ["<2-leftmouse>"] = "jump",
-    ["<c-s>"] = "jump_split",
-    ["<c-v>"] = "jump_vsplit",
-    -- go down to next item (accepts count)
-    -- j = "next",
-    ["}"] = "next",
-    ["]]"] = "next",
-    -- go up to prev item (accepts count)
-    -- k = "prev",
-    ["{"] = "prev",
-    ["[["] = "prev",
-    dd = "delete",
-    d = { action = "delete", mode = "v" },
-    i = "inspect",
-    p = "preview",
-    P = "toggle_preview",
-    zo = "fold_open",
-    zO = "fold_open_recursive",
-    zc = "fold_close",
-    zC = "fold_close_recursive",
-    za = "fold_toggle",
-    zA = "fold_toggle_recursive",
-    zm = "fold_more",
-    zM = "fold_close_all",
-    zr = "fold_reduce",
-    zR = "fold_open_all",
-    zx = "fold_update",
-    zX = "fold_update_all",
-    zn = "fold_disable",
-    zN = "fold_enable",
-    zi = "fold_toggle_enable",
-    gb = { -- example of a custom action that toggles the active view filter
-      action = function(view)
-        view:filter({ buf = 0 }, { toggle = true })
-      end,
-      desc = "Toggle Current Buffer Filter",
-    },
-    s = { -- example of a custom action that toggles the severity
-      action = function(view)
-        local f = view:get_filter("severity")
-        local severity = ((f and f.filter.severity or 0) + 1) % 5
-        view:filter({ severity = severity }, {
-          id = "severity",
-          template = "{hl:Title}Filter:{hl} {severity}",
-          del = severity == 0,
-        })
-      end,
-      desc = "Toggle Severity Filter",
-    },
+    update = 10, -- writes the results to the quickfix list
   },
   ---@type table<string, trouble.Mode>
   modes = {
@@ -239,7 +159,6 @@ local defaults = {
       desc = "document symbols",
       mode = "lsp_document_symbols",
       focus = false,
-      win = { position = "right" },
       filter = {
         -- remove Package since luals uses it for control flow structures
         ["not"] = { ft = "lua", kind = "Package" },
@@ -267,19 +186,6 @@ local defaults = {
     },
   },
   icons = {
-    ---@type trouble.Indent.symbols
-    indent = {
-      top           = "│ ",
-      middle        = "├╴",
-      last          = "└╴",
-      -- last          = "-╴",
-      -- last       = "╰╴", -- rounded
-      fold_open     = " ",
-      fold_closed   = " ",
-      ws            = "  ",
-    },
-    folder_closed   = " ",
-    folder_open     = " ",
     kinds = {
       Array         = " ",
       Boolean       = "󰨙 ",
@@ -331,18 +237,49 @@ Some examples:
 
 - Toggle diagnostics for the current buffer and stay in the current window:
   - `Trouble diagnostics toggle focus=false filter.buf=0`
-- Show document symbols on the right of the current window.
-  Keep the document symbols in sync with the buffer you started the command in.
-  - `Trouble symbols toggle pinned=true win.relative=win win.position=right`
+- Show document symbols, keeping them in sync with the buffer you started the command in:
+  - `Trouble symbols toggle pinned=true focus=false`
 - You can use **lua** code in the options for the `Trouble` command.
   The examples below all do the same thing.
   - `Trouble diagnostics filter.severity=vim.diagnostic.severity.ERROR`
   - `Trouble diagnostics filter.severity = vim.diagnostic.severity.ERROR`
   - `Trouble diagnostics filter = { severity=vim.diagnostic.severity.ERROR }`
 - Merging of nested options, with or without quoting strings:
-  - `Trouble diagnostics win.type = split win.position=right`
-  - `Trouble diagnostics win = { type = split, position=right}`
-  - `Trouble diagnostics win = { type = "split", position='right'}`
+  - `Trouble diagnostics qf.height = 20 qf.open_cmd=topleft copen`
+  - `Trouble diagnostics qf = { height = 20 }`
+
+Opening a mode with different options rebuilds its list in place, so
+`Trouble diagnostics open filter.buf=0` re-filters the same quickfix list
+instead of pushing a new one onto the stack.
+
+### Quickfix window
+
+The results are shown in the regular quickfix window, so **navigation is
+Neovim's job**. Trouble deliberately ships no equivalents:
+
+| Task | Use |
+| --- | --- |
+| Jump to an entry | `<CR>` in the quickfix window, or `:cc` |
+| Open in a split / vsplit | `Ctrl-W Enter`, or `:vsplit \| cc` |
+| Next / previous entry | `:cnext` / `:cprev` |
+| First / last entry | `:cfirst` / `:clast` |
+| Open / close the window | `:copen` / `:cclose` |
+| Run a command over every entry | `:cdo` |
+| Switch between mode lists | `:colder` / `:cnewer` / `:chistory` |
+
+The actions that remain are the ones the quickfix list can't do for itself,
+because they act on trouble's items rather than on the window:
+
+```vim
+:Trouble diagnostics refresh         " refetch from the source
+:Trouble diagnostics toggle_refresh  " stop/resume keeping the list in sync
+:Trouble diagnostics filter filter.severity=1
+:Trouble diagnostics delete          " drop the current entry, and stop auto refresh
+:Trouble diagnostics inspect         " print the raw source item
+```
+
+Opening a mode makes its quickfix list the current one, so the quickfix
+commands above act on it right away.
 
 Please refer to the API section for more information on the available actions and options.
 
@@ -351,9 +288,6 @@ Modes:
 <!-- modes:start -->
 
 - **diagnostics**: diagnostics
-- **fzf**: FzfLua results previously opened with `require('trouble.sources.fzf').open()`.
-- **fzf_files**: FzfLua results previously opened with `require('trouble.sources.fzf').open()`.
-- **loclist**: Location List
 - **lsp**: LSP definitions, references, implementations, type definitions, and declarations
 - **lsp_command**: command
 - **lsp_declarations**: declarations
@@ -364,13 +298,7 @@ Modes:
 - **lsp_outgoing_calls**: Outgoing Calls
 - **lsp_references**: references
 - **lsp_type_definitions**: type definitions
-- **qflist**: Quickfix List
-- **quickfix**: Quickfix List
-- **snacks**: Snacks results previously opened with `require('trouble.sources.snacks').open()`.
-- **snacks_files**: Snacks results previously opened with `require('trouble.sources.snacks').open()`.
 - **symbols**: document symbols
-- **telescope**: Telescope results previously opened with `require('trouble.sources.telescope').open()`.
-- **telescope_files**: Telescope results previously opened with `require('trouble.sources.telescope').open()`.
 
 <!-- modes:end -->
 
@@ -388,222 +316,62 @@ You can use the following functions in your keybindings:
 
 ```lua
 -- Opens trouble with the given mode.
--- If a view is already open with the same mode,
--- it will be focused unless `opts.focus = false`.
--- When a view is already open and `opts.new = true`,
--- a new view will be created.
----@param opts? trouble.Mode | { new?: boolean, refresh?: boolean } | string
----@return trouble.View?
+-- The results are written to the quickfix list and the quickfix
+-- window is opened, unless `opts.focus = false`.
+---@param opts? trouble.Mode | { refresh?: boolean } | string
+---@return trouble.List?
 require("trouble").open(opts)
 
--- Closes the last open view matching the filter.
+-- Closes the quickfix window when it shows the results of the given mode.
 ---@param opts? trouble.Mode|string
----@return trouble.View?
+---@return trouble.List?
 require("trouble").close(opts)
 
--- Toggle the view with the given mode.
+-- Toggle the given mode.
 ---@param opts? trouble.Mode|string
----@return trouble.View?
+---@return trouble.List?
 require("trouble").toggle(opts)
 
--- Returns true if there is an open view matching the mode.
+-- Returns true when the quickfix window is open and shows the given mode.
 ---@param opts? trouble.Mode|string
 require("trouble").is_open(opts)
 
--- Refresh all open views. Normally this is done automatically,
--- unless you disabled auto refresh.
+-- Refresh the given mode, or all modes when none is given.
+-- Normally this is done automatically, unless you disabled auto refresh.
 ---@param opts? trouble.Mode|string
 require("trouble").refresh(opts)
 
--- Get all items from the active view for a given mode.
+-- Get all items for a given mode.
 ---@param opts? trouble.Mode|string
 require("trouble").get_items(opts)
 
--- Renders a trouble list as a statusline component.
--- Check the docs for examples.
----@param opts? trouble.Mode|string|{hl_group?:string}
----@return {get: (fun():string), has: (fun():boolean)}
-require("trouble").statusline(opts)
+-- Returns the quickfix entries for a given mode, without touching
+-- the quickfix list. Useful to build your own list.
+---@param opts? trouble.Mode|string
+require("trouble").get_entries(opts)
 
--- Closes the preview and goes to the main window.
--- The Trouble window is not closed.
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").cancel(opts)
+-- Returns the number of items in the quickfix list.
+require("trouble").count()
 
--- Open the preview
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
+-- Remove the item under the cursor from the list.
+-- This also disables auto refresh, so it doesn't come straight back.
+---@param opts? trouble.Mode | string
+---@return trouble.List
 require("trouble").delete(opts)
 
--- filter
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
+-- Apply a filter to the items and rewrite the quickfix list
+---@param opts? trouble.Mode | string
+---@return trouble.List
 require("trouble").filter(opts)
 
--- Go to the first item
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").first(opts)
-
--- Focus the trouble window
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").focus(opts)
-
--- Fold close 
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_close(opts)
-
--- fold close all
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_close_all(opts)
-
--- Fold close recursive
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_close_recursive(opts)
-
--- fold disable
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_disable(opts)
-
--- fold enable
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_enable(opts)
-
--- fold more
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_more(opts)
-
--- Fold open 
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_open(opts)
-
--- fold open all
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_open_all(opts)
-
--- Fold open recursive
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_open_recursive(opts)
-
--- fold reduce
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_reduce(opts)
-
--- Fold toggle 
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_toggle(opts)
-
--- fold toggle enable
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_toggle_enable(opts)
-
--- Fold toggle recursive
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_toggle_recursive(opts)
-
--- fold update
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_update(opts)
-
--- fold update all
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").fold_update_all(opts)
-
--- Show the help
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").help(opts)
-
--- Dump the item to the console
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
+-- Dump the source item under the cursor to the console
+---@param opts? trouble.Mode | string
+---@return trouble.List
 require("trouble").inspect(opts)
 
--- Jump to the item if on an item, otherwise fold the node
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").jump(opts)
-
--- Jump to the item and close the trouble window
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").jump_close(opts)
-
--- Jump to the item if on an item, otherwise do nothing
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").jump_only(opts)
-
--- Open the item in a split
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").jump_split(opts)
-
--- Open the item in a split and close the trouble window
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").jump_split_close(opts)
-
--- Open the item in a vsplit
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").jump_vsplit(opts)
-
--- Open the item in a vsplit and close the trouble window
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").jump_vsplit_close(opts)
-
--- Go to the last item
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").last(opts)
-
--- Go to the next item
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").next(opts)
-
--- Go to the previous item
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").prev(opts)
-
--- Open the preview
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").preview(opts)
-
--- Refresh the trouble source
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").refresh(opts)
-
--- Toggle the preview
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
-require("trouble").toggle_preview(opts)
-
--- Toggle the auto refresh
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
+-- Toggle whether the list is kept in sync with its source
+---@param opts? trouble.Mode | string
+---@return trouble.List
 require("trouble").toggle_refresh(opts)
 ```
 
@@ -611,126 +379,35 @@ require("trouble").toggle_refresh(opts)
 
 </details>
 
-### Telescope
+## 🔭 Pickers
 
-You can easily open any search results in **Trouble**, by defining a custom action:
+Trouble no longer wraps pickers. Every one of them can already put its results
+in the quickfix list, which is where trouble puts things too, so use the
+picker's own action:
+
+| Picker | Action | Default key |
+| --- | --- | --- |
+| [Telescope](https://github.com/nvim-telescope/telescope.nvim) | `send_to_qflist` / `smart_send_to_qflist` (and the `add_*` variants to append) | `<C-q>` |
+| [fzf-lua](https://github.com/ibhagwan/fzf-lua) | `actions.file_sel_to_qf` | `<C-q>` |
+| [snacks.picker](https://github.com/folke/snacks.nvim) | `qflist` | `<C-q>` |
+
+For Telescope, the built-in default already opens the quickfix window too:
 
 ```lua
 local actions = require("telescope.actions")
-local open_with_trouble = require("trouble.sources.telescope").open
 
--- Use this to add more results without clearing the trouble list
-local add_to_trouble = require("trouble.sources.telescope").add
-
-local telescope = require("telescope")
-
-telescope.setup({
+require("telescope").setup({
   defaults = {
     mappings = {
-      i = { ["<c-t>"] = open_with_trouble },
-      n = { ["<c-t>"] = open_with_trouble },
+      i = { ["<c-q>"] = actions.smart_send_to_qflist + actions.open_qflist },
+      n = { ["<c-q>"] = actions.smart_send_to_qflist + actions.open_qflist },
     },
   },
 })
 ```
 
-When you open telescope, you can now hit `<c-t>` to open the results in **Trouble**
-
-### fzf-lua
-
-You can easily open any search results in **Trouble**, by defining a custom action:
-
-```lua
-local config = require("fzf-lua.config")
-local actions = require("trouble.sources.fzf").actions
-config.defaults.actions.files["ctrl-t"] = actions.open
-```
-
-When you open fzf-lua, you can now hit `<c-t>` to open the results in **Trouble**
-
-### Statusline Component
-
-Example for [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim):
-
-```lua
-{
-  "nvim-lualine/lualine.nvim",
-  opts = function(_, opts)
-    local trouble = require("trouble")
-    local symbols = trouble.statusline({
-      mode = "lsp_document_symbols",
-      groups = {},
-      title = false,
-      filter = { range = true },
-      format = "{kind_icon}{symbol.name:Normal}",
-      -- The following line is needed to fix the background color
-      -- Set it to the lualine section you want to use
-      hl_group = "lualine_c_normal",
-    })
-    table.insert(opts.sections.lualine_c, {
-      symbols.get,
-      cond = symbols.has,
-    })
-  end,
-}
-```
-
 ## 🎨 Colors
 
-The table below shows all the highlight groups defined for Trouble.
-
-<details><summary>Highlight Groups</summary>
-
-<!-- colors:start -->
-
-| Highlight Group | Default Group | Description |
-| --- | --- | --- |
-| **TroubleBasename** | ***TroubleFilename*** |  |
-| **TroubleCode** | ***Special*** |  |
-| **TroubleCount** | ***TabLineSel*** |  |
-| **TroubleDirectory** | ***Directory*** |  |
-| **TroubleFilename** | ***Directory*** |  |
-| **TroubleIconArray** | ***@punctuation.bracket*** |  |
-| **TroubleIconBoolean** | ***@boolean*** |  |
-| **TroubleIconClass** | ***@type*** |  |
-| **TroubleIconConstant** | ***@constant*** |  |
-| **TroubleIconConstructor** | ***@constructor*** |  |
-| **TroubleIconDirectory** | ***Special*** |  |
-| **TroubleIconEnum** | ***@lsp.type.enum*** |  |
-| **TroubleIconEnumMember** | ***@lsp.type.enumMember*** |  |
-| **TroubleIconEvent** | ***Special*** |  |
-| **TroubleIconField** | ***@variable.member*** |  |
-| **TroubleIconFile** | ***Normal*** |  |
-| **TroubleIconFunction** | ***@function*** |  |
-| **TroubleIconInterface** | ***@lsp.type.interface*** |  |
-| **TroubleIconKey** | ***@lsp.type.keyword*** |  |
-| **TroubleIconMethod** | ***@function.method*** |  |
-| **TroubleIconModule** | ***@module*** |  |
-| **TroubleIconNamespace** | ***@module*** |  |
-| **TroubleIconNull** | ***@constant.builtin*** |  |
-| **TroubleIconNumber** | ***@number*** |  |
-| **TroubleIconObject** | ***@constant*** |  |
-| **TroubleIconOperator** | ***@operator*** |  |
-| **TroubleIconPackage** | ***@module*** |  |
-| **TroubleIconProperty** | ***@property*** |  |
-| **TroubleIconString** | ***@string*** |  |
-| **TroubleIconStruct** | ***@lsp.type.struct*** |  |
-| **TroubleIconTypeParameter** | ***@lsp.type.typeParameter*** |  |
-| **TroubleIconVariable** | ***@variable*** |  |
-| **TroubleIndent** | ***LineNr*** |  |
-| **TroubleIndentFoldClosed** | ***CursorLineNr*** |  |
-| **TroubleIndentFoldOpen** | ***TroubleIndent*** |  |
-| **TroubleIndentLast** | ***TroubleIndent*** |  |
-| **TroubleIndentMiddle** | ***TroubleIndent*** |  |
-| **TroubleIndentTop** | ***TroubleIndent*** |  |
-| **TroubleIndentWs** | ***TroubleIndent*** |  |
-| **TroubleNormal** | ***NormalFloat*** |  |
-| **TroubleNormalNC** | ***NormalFloat*** |  |
-| **TroublePos** | ***LineNr*** |  |
-| **TroublePreview** | ***Visual*** |  |
-| **TroubleSource** | ***Comment*** |  |
-| **TroubleText** | ***Normal*** |  |
-
-<!-- colors:end -->
-
-</details>
+Trouble no longer defines any highlight groups. The quickfix window is
+highlighted by Neovim itself (`qf` syntax, `QuickFixLine`, and the
+`Diagnostic*` groups your colorscheme provides).

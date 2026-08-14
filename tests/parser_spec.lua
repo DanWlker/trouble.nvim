@@ -42,8 +42,8 @@ describe("Input is parsed correctly", function()
       expected = { opts = { empty = "", nonempty = "not empty" }, errors = {}, args = {} },
     },
     {
-      input = [[win.position="right" win.relative="win"]],
-      expected = { opts = { win = { position = "right", relative = "win" } }, errors = {}, args = {} },
+      input = [[qf.open_cmd="topleft copen" qf.height=20]],
+      expected = { opts = { qf = { open_cmd = "topleft copen", height = 20 } }, errors = {}, args = {} },
     },
     {
       input = [[a.b="c" a = "b"]],

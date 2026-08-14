@@ -4,60 +4,26 @@ local Item = require("trouble.item")
 ---@class trouble.Source.diagnostics: trouble.Source
 local M = {}
 
-M.highlights = {
-  Message = "TroubleText",
-  ItemSource = "Comment",
-  Code = "Comment",
-}
-
 M.config = {
   modes = {
     diagnostics = {
       desc = "diagnostics",
+      title = "Diagnostics",
       events = { "DiagnosticChanged", "BufEnter" },
-      -- Trouble classic for other buffers,
-      -- but only if they are in the current directory
       source = "diagnostics",
-      groups = {
-        -- { format = "{hl:Special}󰚢 {hl} {hl:Title}Diagnostics{hl} {count}" },
-        -- { "severity", format = "{severity_icon} {severity} {count}" },
-        -- { "dirname", format = "{hl:Special} {hl} {dirname} {count}" },
-        { "directory" },
-        { "filename", format = "{file_icon} {basename} {count}" },
-      },
       sort = { "severity", "filename", "pos", "message" },
-      format = "{severity_icon} {message:md} {item.source} {code} {pos}",
+      -- the quickfix list already renders the filename, the position and the
+      -- severity type, so the entry text only holds the message and its origin
+      format = "{message} {item.source} {code}",
       -- filter = {
-      -- ["not"] = {
-      --   any = {
-      --     { severity = vim.diagnostic.severity.ERROR },
-      --     { buf = 0 },
+      --   ["not"] = {
+      --     any = {
+      --       { severity = vim.diagnostic.severity.ERROR },
+      --       { buf = 0 },
+      --     },
       --   },
       -- },
-      -- function(item)
-      --   return item.filename:find((vim.loop or vim.uv).cwd(), 1, true)
-      -- end,
-      -- },
     },
-    -- {
-    --   -- error from all files
-    --   source = "diagnostics",
-    --   groups = { "severity", "code", "filename" },
-    --   filter = {
-    --     -- severity = 1,
-    --   },
-    --   sort = { "filename", "pos" },
-    --   format = "sig {severity_sign} {severity} file: {filename} pos: {pos}",
-    -- },
-    -- {
-    --   -- diagnostics from current buffer
-    --   source = "diagnostics",
-    --   groups = { "severity", "filename" },
-    --   filter = {
-    --     buf = 0,
-    --   },
-    --   sort = { "pos" },
-    -- },
   },
 }
 

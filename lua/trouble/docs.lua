@@ -9,11 +9,6 @@ function M.update()
   config = config:gsub("%s*debug = false.\n", "\n")
   Docs.save({
     config = config,
-    colors = Docs.colors({
-      modname = "trouble.config.highlights",
-      path = "lua/trouble/config/highlights.lua",
-      name = "Trouble",
-    }),
     modes = M.modes(),
     api = M.api(),
   })
@@ -79,8 +74,6 @@ function M.api()
   local names = vim.tbl_keys(Actions)
   table.sort(names)
 
-  local exclude = { "close" }
-
   for _, k in ipairs(names) do
     local desc = comments[k] or k:gsub("_", " ")
     local action = Actions[k]
@@ -94,11 +87,11 @@ function M.api()
       end, vim.split(desc, "\n")),
       "\n"
     )
-    if type(action) == "function" and not vim.tbl_contains(exclude, k) then
+    if type(action) == "function" then
       funcs[#funcs + 1] = ([[
 %s
----@param opts? trouble.Mode | { new? : boolean } | string
----@return trouble.View
+---@param opts? trouble.Mode | string
+---@return trouble.List
 require("trouble").%s(opts)]]):format(desc, k)
     end
   end

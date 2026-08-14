@@ -28,53 +28,12 @@ describe("parses specs", function()
     end
   end)
 
-  it("parses a group spec", function()
-    ---@type ({input:trouble.Group.spec, output:trouble.Group})[]
-    local tests = {
-      {
-        input = "foo",
-        output = { fields = { "foo" }, format = "{foo}" },
-      },
-      {
-        input = "foo",
-        output = { fields = { "foo" }, format = "{foo}" },
-      },
-      {
-        input = { "foo", "bar" },
-        output = { fields = { "foo", "bar" }, format = "{foo} {bar}" },
-      },
-      {
-        input = { "foo", "bar" },
-        output = { fields = { "foo", "bar" }, format = "{foo} {bar}" },
-      },
-      {
-        input = { "foo", "bar" },
-        output = { fields = { "foo", "bar" }, format = "{foo} {bar}" },
-      },
-      {
-        input = {
-          "directory",
-          format = "{kind_icon} {symbol.name} {text:Comment} {pos}",
-        },
-        output = {
-          directory = true,
-          format = "{kind_icon} {symbol.name} {text:Comment} {pos}",
-        },
-      },
-    }
-
-    for _, test in ipairs(tests) do
-      assert.same(test.output, Spec.group(test.input))
-    end
-  end)
-
   it("parses a section spec", function()
     local tests = {
       {
         input = {
           -- error from all files
           source = "diagnostics",
-          groups = { "filename" },
           filter = {
             severity = 1,
           },
@@ -83,10 +42,26 @@ describe("parses specs", function()
         output = {
           events = {},
           source = "diagnostics",
-          groups = { { fields = { "filename" }, format = "{filename}" } },
           sort = { { field = "filename" }, { field = "pos", desc = true } },
           filter = { severity = 1 },
-          format = "{filename} {pos}",
+          format = "{text}",
+        },
+      },
+      {
+        input = {
+          source = "diagnostics",
+          title = "Diagnostics",
+          events = { "DiagnosticChanged", "BufEnter foo*" },
+          format = "{message} {code}",
+        },
+        output = {
+          source = "diagnostics",
+          title = "Diagnostics",
+          events = {
+            { event = "DiagnosticChanged" },
+            { event = "BufEnter", pattern = "foo*" },
+          },
+          format = "{message} {code}",
         },
       },
     }

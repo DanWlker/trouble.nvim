@@ -7,7 +7,7 @@ local M = {}
 ---@alias trouble.Format {text:string, hl?:string}
 
 ---@alias trouble.Formatter fun(ctx: trouble.Formatter.ctx): trouble.spec.format?
----@alias trouble.Formatter.ctx {item: trouble.Item, node:trouble.Node, field:string, value:string, opts:trouble.Config}
+---@alias trouble.Formatter.ctx {item: trouble.Item, field:string, value:string, opts:trouble.Config}
 
 ---@param source string
 ---@param field string
@@ -119,10 +119,19 @@ M.formatters = {
     local icon, color = M.get_icon(file, ext)
     return icon and { text = icon .. " ", hl = color } or ""
   end,
-  count = function(ctx)
-    return {
-      text = (" %d "):format(ctx.node:count()),
-    }
+  -- Indents nested items (LSP document symbols) by their depth,
+  -- since the quickfix list has no notion of a hierarchy.
+  indent = function(ctx)
+    local depth = 0
+    local parent = ctx.item.parent
+    while parent do
+      depth = depth + 1
+      parent = parent.parent
+    end
+    if depth == 0 then
+      return
+    end
+    return { text = ("  "):rep(depth) }
   end,
   filename = function(ctx)
     return {
@@ -132,12 +141,6 @@ M.formatters = {
   dirname = function(ctx)
     return {
       text = vim.fn.fnamemodify(ctx.item.dirname, ":p:~:."),
-    }
-  end,
-  filter = function(ctx)
-    return {
-      text = vim.inspect(ctx.item.filter):gsub("%s+", " "),
-      hl = "ts.lua",
     }
   end,
   kind_icon = function(ctx)
@@ -150,23 +153,6 @@ M.formatters = {
         text = icon,
         hl = "TroubleIcon" .. ctx.item.kind,
       }
-    end
-  end,
-  directory = function(ctx)
-    if ctx.node:source() == "fs" then
-      local directory = ctx.item.directory or ""
-      local parent = ctx.node:parent_item()
-      if parent and parent.directory then
-        directory = directory:sub(#parent.directory + 1)
-        return { text = directory, hl = "TroubleDirectory" }
-      end
-      return { text = vim.fn.fnamemodify(directory, ":~"), hl = "TroubleDirectory" }
-    end
-  end,
-  directory_icon = function(ctx)
-    if ctx.node:source() == "fs" then
-      local text = ctx.node.folded and ctx.opts.icons.folder_closed or ctx.opts.icons.folder_open
-      return { text = text, hl = "TroubleIconDirectory" }
     end
   end,
 }
@@ -197,12 +183,13 @@ function M.field(ctx)
   end
   for _, f in ipairs(format) do
     f.hl = f.hl or M.default_hl(ctx.item.source, ctx.field)
+    f.fi = f.fi or ctx.field
   end
   return format
 end
 
 ---@param format string
----@param ctx {item: trouble.Item, node:trouble.Node, opts:trouble.Config}
+---@param ctx {item: trouble.Item, opts:trouble.Config}
 function M.format(format, ctx)
   ---@type trouble.Format[]
   local ret = {}
@@ -248,6 +235,31 @@ function M.format(format, ctx)
     ret[#ret + 1] = { text = format, hl = hl }
   end
   return ret
+end
+
+--- Renders a format template to a single line of plain text.
+--- Quickfix entries can't span multiple lines and have no highlights,
+--- so newlines are squashed and highlight groups are dropped.
+--- A leading `{indent}` is kept, everything else is trimmed.
+---@param format string
+---@param ctx {item: trouble.Item, opts:trouble.Config}
+---@return string
+function M.text(format, ctx)
+  local indent = ""
+  local parts = {} ---@type string[]
+
+  for i, f in ipairs(M.format(format, ctx)) do
+    if i == 1 and f.fi == "indent" then
+      indent = f.text
+    else
+      parts[#parts + 1] = f.text
+    end
+  end
+
+  local text = table.concat(parts):gsub("[\n\r]+", " ")
+  -- fields that resolve to an empty string leave gaps behind
+  text = vim.trim(text):gsub("%s%s+", " ")
+  return indent .. text
 end
 
 return M

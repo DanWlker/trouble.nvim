@@ -50,7 +50,7 @@ end
 M.config = {
   modes = {
     lsp_document_symbols = {
-      title = "{hl:Title}Document Symbols{hl} {count}",
+      title = "Document Symbols",
       desc = "document symbols",
       events = {
         "BufEnter",
@@ -61,12 +61,10 @@ M.config = {
         { event = "LspAttach", main = true },
       },
       source = "lsp.document_symbols",
-      groups = {
-        { "filename", format = "{file_icon} {filename} {count}" },
-      },
       sort = { "filename", "pos", "text" },
       -- sort = { { buf = 0 }, { kind = "Function" }, "filename", "pos", "text" },
-      format = "{kind_icon} {symbol.name} {text:Comment} {pos}",
+      -- `{indent}` keeps the symbol hierarchy readable in the flat quickfix list
+      format = "{indent}{kind_icon} {symbol.name}",
     },
     lsp_base = {
       events = {
@@ -74,11 +72,8 @@ M.config = {
         { event = "CursorHold", main = true },
         { event = "LspAttach", main = true },
       },
-      groups = {
-        { "filename", format = "{file_icon} {filename} {count}" },
-      },
       sort = { "filename", "pos", "text" },
-      format = "{text:ts} ({item.client}) {pos}",
+      format = "{text} ({item.client})",
     },
     lsp = {
       desc = "LSP definitions, references, implementations, type definitions, and declarations",
@@ -98,10 +93,10 @@ M.config = {
 for _, mode in ipairs({ "incoming_calls", "outgoing_calls" }) do
   M.config.modes["lsp_" .. mode] = {
     mode = "lsp_base",
-    title = "{hl:Title}" .. Util.camel(mode, " ") .. "{hl} {count}",
+    title = Util.camel(mode, " "),
     desc = Util.camel(mode, " "),
     source = "lsp." .. mode,
-    format = "{kind_icon} {text:ts} {pos} {hl:Title}{item.client:Title}{hl}",
+    format = "{kind_icon} {text} ({item.client})",
   }
 end
 
@@ -109,7 +104,7 @@ for _, mode in ipairs({ "definitions", "references", "implementations", "type_de
   M.config.modes["lsp_" .. mode] = {
     auto_jump = true,
     mode = "lsp_base",
-    title = "{hl:Title}" .. Util.camel(mode, " ") .. "{hl} {count}",
+    title = Util.camel(mode, " "),
     source = "lsp." .. mode,
     desc = Util.camel(mode, " "):lower(),
   }
