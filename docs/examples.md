@@ -2,24 +2,32 @@
 
 ## Quickfix Window
 
-### A taller quickfix window at the top
+Trouble never opens or closes the window, so this is all plain Neovim.
+
+### Show the window automatically when there are results
 
 ```lua
-{
-  qf = {
-    open_cmd = "topleft copen",
-    height = 20,
-  },
-}
+vim.api.nvim_create_autocmd("QuickFixCmdPost", {
+  pattern = "Trouble",
+  callback = function()
+    vim.cmd("cwindow")
+  end,
+})
 ```
 
-### Let Neovim decide the height
+`:cwindow` opens the window when the list is non-empty and closes it when it is
+empty, so this covers what `auto_open` and `auto_close` used to do — on the
+initial load and on every auto refresh.
 
-```lua
-{
-  qf = { height = false },
-}
+### A taller window at the top
+
+That's a quickfix command, not a trouble option:
+
+```vim
+:topleft copen 20
 ```
+
+Or wire it into the autocmd above with `vim.cmd("topleft cwindow 20")`.
 
 ### Show the file name in the entry text
 
@@ -103,36 +111,25 @@ Once those are resolved, less severe diagnostics will be shown.
 
 ## Other
 
-### Send diagnostics to the quickfix list after a grep
+### Load diagnostics after a grep
 
 ```lua
 vim.api.nvim_create_autocmd("QuickFixCmdPost", {
+  pattern = "grep",
   callback = function()
-    vim.cmd([[Trouble diagnostics open focus=false]])
+    vim.cmd([[Trouble diagnostics]])
   end,
 })
 ```
 
-### Keep the quickfix list in sync while you work
+### Keeping the list fresh
 
-Any mode with `auto_open` writes to the quickfix list and opens the window as
-soon as there is something to show, and `auto_close` hides it again once the
-list is empty:
-
-```lua
-{
-  modes = {
-    diagnostics_auto = {
-      mode = "diagnostics",
-      filter = { buf = 0 },
-      auto_open = true,
-      auto_close = true,
-      focus = false,
-    },
-  },
-}
-```
+Loading a mode makes its quickfix list the current one and starts auto refresh.
+From then on the list follows its source until you switch to another list.
 
 Trouble only ever touches the quickfix list it created for a mode. If you push
-your own list with `:grep` or `setqflist()`, auto refresh stops writing until
-you open the trouble mode again.
+your own list with `:grep` or `setqflist()`, auto refresh stops writing until you
+load the trouble mode again — your list is never clobbered.
+
+Use `:colder` / `:cnewer` / `:chistory` to move between them, and
+`:Trouble <mode>` to bring a specific mode's list back to the front.

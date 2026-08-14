@@ -42,7 +42,7 @@ function M.new(opts)
     end
     -- only auto refresh while this list still owns the quickfix list
     section.enabled = function()
-      return self:is_active() or self.opts.auto_open == true
+      return self:is_active()
     end
     table.insert(self.sections, section)
   end
@@ -51,11 +51,6 @@ function M.new(opts)
 
   if self.opts.mode then
     M._lists[self.opts.mode] = self
-  end
-
-  if self.opts.auto_open then
-    self:listen()
-    self:refresh()
   end
 
   return self
@@ -129,12 +124,8 @@ function M:is_active()
   return Qf.is_current(self.qf_id)
 end
 
---- True when the quickfix window is open and showing this list.
-function M:is_open()
-  return self:is_active() and Qf.is_open()
-end
-
---- Writes the items to the quickfix list, creating it when needed.
+--- Writes the items to the quickfix list, creating it when needed,
+--- then lets `QuickFixCmdPost` listeners (usually `cwindow`) react.
 function M:write()
   local entries = self:entries()
   local title = self:title()
@@ -143,6 +134,7 @@ function M:write()
   else
     self.qf_id = Qf.create(entries, title)
   end
+  Qf.post()
 end
 
 function M:listen()
@@ -160,7 +152,7 @@ end
 ---@param opts? {update?: boolean, opening?: boolean}
 function M:refresh(opts)
   opts = opts or {}
-  if not (opts.opening or self:is_active() or self.opts.auto_open) then
+  if not (opts.opening or self:is_active()) then
     return Promise.resolve()
   end
   ---@param section trouble.Section
@@ -170,74 +162,39 @@ function M:refresh(opts)
 end
 
 --- Called when the results of a section changed.
+--- Never clobbers a quickfix list that isn't ours.
 function M:update()
-  local count = self:count()
-
-  if self.opts.auto_open and count > 0 and not self:is_open() then
+  if self:is_active() then
     self:write()
-    Qf.activate(self.qf_id)
-    Qf.open(self.opts)
-    return
-  end
-
-  -- Never clobber a quickfix list that isn't ours.
-  if not self:is_active() then
-    return
-  end
-
-  self:write()
-
-  if count == 0 and self.opts.auto_close and Qf.is_open() then
-    Qf.close()
   end
 end
 
+--- Loads the mode into its quickfix list and makes it the current one.
+--- Showing the window is the user's job: `:copen`, or a `cwindow` autocmd
+--- on `QuickFixCmdPost`.
 function M:open()
   self:listen()
   self
     :refresh({ update = false, opening = true })
     :next(function()
       local count = self:count()
-      if count == 0 then
-        if not self.opts.open_no_results then
-          -- don't leave stale results behind in a list we already own
-          if Qf.exists(self.qf_id) then
-            self:write()
-          end
-          if self.opts.warn_no_results then
-            local main = self.sections[1] and self.sections[1]:main()
-            Util.warn({
-              "No results for **" .. (self.opts.mode or "?") .. "**",
-              main and ("Buffer: " .. vim.api.nvim_buf_get_name(main.buf)) or "",
-            })
-          end
-          return
-        end
-      elseif count == 1 and self.opts.auto_jump then
-        self:write()
-        Qf.activate(self.qf_id)
-        -- jump straight to the only result, without showing the list
-        if Qf.is_open() then
-          Qf.close()
-        end
-        vim.cmd("cfirst")
-        return
-      end
+
       self:write()
       Qf.activate(self.qf_id)
-      Qf.open(self.opts)
+
+      if count == 0 then
+        if self.opts.warn_no_results then
+          local main = self.sections[1] and self.sections[1]:main()
+          Util.warn({
+            "No results for **" .. (self.opts.mode or "?") .. "**",
+            main and ("Buffer: " .. vim.api.nvim_buf_get_name(main.buf)) or "",
+          })
+        end
+      elseif count == 1 and self.opts.auto_jump then
+        vim.cmd("cfirst")
+      end
     end)
     :next(self.first_update.resolve)
-  return self
-end
-
-function M:close()
-  if self:is_open() then
-    Qf.close()
-  end
-  if not self.opts.auto_open then
-    self:stop()
-  end
   return self
 end
 

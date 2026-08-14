@@ -5,10 +5,12 @@ built-in **quickfix list** — filtered, sorted and formatted, and kept up to da
 while you work.
 
 This is a fork of [trouble.nvim](https://github.com/folke/trouble.nvim) with its
-custom window UI removed. You get trouble's sources, filters, sorters and modes,
-but the results are rendered by the native quickfix window, so `:cnext`,
-`:cprev`, `:cdo`, `<CR>`, `Ctrl-W Enter` and every other quickfix mapping and
-plugin you already use keep working.
+custom window UI removed. You get trouble's sources, filters, sorters and modes;
+Neovim does everything else.
+
+Trouble's entire job is to **fill the quickfix list and keep it fresh**. It never
+opens, closes or focuses a window — `:copen`, `:cclose` and `:cwindow` already do
+that, and they do it better than a plugin option can.
 
 ## ✨ Features
 
@@ -29,9 +31,12 @@ their results to the quickfix list themselves. See [Pickers](#-pickers).
 
 Everything that draws a window is gone; everything that produces items stays:
 
-- results are written to the **quickfix list** and shown in the native quickfix window
+- results are written to the **quickfix list**, and that's the whole output
 - no custom window, no preview window, no folds, no indent guides, no highlight groups
 - no trouble keymaps — the quickfix window keeps its own
+- **no window management at all**: no `open`/`close`/`toggle`/`is_open`, no
+  `focus`, no `auto_open`/`auto_close`, no window size or position options.
+  `:copen`, `:cclose` and `:cwindow` cover every one of those.
 - the `qflist`, `loclist` and `quickfix` modes are gone, since the quickfix list is now the output
 - the `statusline` component is gone
 - the `telescope`, `fzf` and `snacks` sources are gone: those pickers already
@@ -68,29 +73,27 @@ Install the plugin with your preferred package manager:
   opts = {}, -- for default options, refer to the configuration section for custom setup.
   cmd = "Trouble",
   keys = {
-    {
-      "<leader>xx",
-      "<cmd>Trouble diagnostics toggle<cr>",
-      desc = "Diagnostics (Trouble)",
-    },
-    {
-      "<leader>xX",
-      "<cmd>Trouble diagnostics toggle filter.buf=0<cr>",
-      desc = "Buffer Diagnostics (Trouble)",
-    },
-    {
-      "<leader>cs",
-      "<cmd>Trouble symbols toggle focus=false<cr>",
-      desc = "Symbols (Trouble)",
-    },
-    {
-      "<leader>cl",
-      "<cmd>Trouble lsp toggle focus=false<cr>",
-      desc = "LSP Definitions / references / ... (Trouble)",
-    },
+    { "<leader>xx", "<cmd>Trouble diagnostics<cr>", desc = "Diagnostics (Trouble)" },
+    { "<leader>xX", "<cmd>Trouble diagnostics filter.buf=0<cr>", desc = "Buffer Diagnostics (Trouble)" },
+    { "<leader>cs", "<cmd>Trouble symbols<cr>", desc = "Symbols (Trouble)" },
+    { "<leader>cl", "<cmd>Trouble lsp<cr>", desc = "LSP Definitions / references / ... (Trouble)" },
   },
+  init = function()
+    -- open the quickfix window when a Trouble mode produced results,
+    -- and close it when it didn't. This is the `auto_open`/`auto_close`
+    -- of the original plugin, done by Neovim.
+    vim.api.nvim_create_autocmd("QuickFixCmdPost", {
+      pattern = "Trouble",
+      callback = function()
+        vim.cmd("cwindow")
+      end,
+    })
+  end,
 }
 ```
+
+Without that autocmd, `:Trouble diagnostics` fills the quickfix list silently and
+you open it yourself with `:copen`, exactly like `:vimgrep` or `:make`.
 
 ## ⚙️ Configuration
 
@@ -114,21 +117,11 @@ Install the plugin with your preferred package manager:
 ---@field filters? table<string, trouble.FilterFn> custom filters
 ---@field sorters? table<string, trouble.SorterFn> custom sorters
 local defaults = {
-  auto_close = false, -- close the quickfix window when there are no items
-  auto_open = false, -- open the quickfix window when there are items
-  auto_refresh = true, -- auto refresh while the list is active
-  auto_jump = false, -- auto jump to the item when there's only one
-  focus = true, -- focus the quickfix window when opened
+  auto_refresh = true, -- keep the list in sync while it is the current one
+  auto_jump = false, -- jump to the item when there's only one
   max_items = 200, -- limit number of items that can be displayed per section
   pinned = false, -- When pinned, the list will be bound to the current buffer
   warn_no_results = true, -- show a warning when there are no results
-  open_no_results = false, -- open the quickfix window when there are no results
-  -- Options for the quickfix window itself.
-  ---@type trouble.Qf.opts
-  qf = {
-    open_cmd = "botright copen", -- command used to open the quickfix window
-    height = 10, -- height of the quickfix window. Set to `false` for the Neovim default.
-  },
   -- Throttle/Debounce settings. Should usually not be changed.
   ---@type table<string, number|{ms:number, debounce?:boolean}>
   throttle = {
@@ -158,7 +151,6 @@ local defaults = {
     symbols = {
       desc = "document symbols",
       mode = "lsp_document_symbols",
-      focus = false,
       filter = {
         -- remove Package since luals uses it for control flow structures
         ["not"] = { ft = "lua", kind = "Package" },
@@ -235,37 +227,54 @@ It can do anything the regular API can do.
 
 Some examples:
 
-- Toggle diagnostics for the current buffer and stay in the current window:
-  - `Trouble diagnostics toggle focus=false filter.buf=0`
-- Show document symbols, keeping them in sync with the buffer you started the command in:
-  - `Trouble symbols toggle pinned=true focus=false`
+- Load diagnostics for the current buffer only:
+  - `Trouble diagnostics filter.buf=0`
+- Load document symbols, keeping them in sync with the buffer you started the command in:
+  - `Trouble symbols pinned=true`
 - You can use **lua** code in the options for the `Trouble` command.
   The examples below all do the same thing.
   - `Trouble diagnostics filter.severity=vim.diagnostic.severity.ERROR`
   - `Trouble diagnostics filter.severity = vim.diagnostic.severity.ERROR`
   - `Trouble diagnostics filter = { severity=vim.diagnostic.severity.ERROR }`
 - Merging of nested options, with or without quoting strings:
-  - `Trouble diagnostics qf.height = 20 qf.open_cmd=topleft copen`
-  - `Trouble diagnostics qf = { height = 20 }`
+  - `Trouble diagnostics filter.any.buf=0 filter.any.severity=1`
+  - `Trouble diagnostics filter = { any = { buf = 0, severity = 1 } }`
 
-Opening a mode with different options rebuilds its list in place, so
-`Trouble diagnostics open filter.buf=0` re-filters the same quickfix list
-instead of pushing a new one onto the stack.
+Loading a mode with different options rebuilds its list in place, so
+`Trouble diagnostics filter.buf=0` re-filters the same quickfix list instead of
+pushing a new one onto the stack.
 
-### Quickfix window
+### The quickfix window is yours
 
-The results are shown in the regular quickfix window, so **navigation is
-Neovim's job**. Trouble deliberately ships no equivalents:
+Trouble fills the list and stops there. Everything you'd do with the results is
+a quickfix command, and trouble deliberately provides no equivalent:
 
 | Task | Use |
 | --- | --- |
+| Open / close the window | `:copen` / `:cclose` |
+| Open if there are results, close if not | `:cwindow` |
 | Jump to an entry | `<CR>` in the quickfix window, or `:cc` |
 | Open in a split / vsplit | `Ctrl-W Enter`, or `:vsplit \| cc` |
 | Next / previous entry | `:cnext` / `:cprev` |
 | First / last entry | `:cfirst` / `:clast` |
-| Open / close the window | `:copen` / `:cclose` |
 | Run a command over every entry | `:cdo` |
 | Switch between mode lists | `:colder` / `:cnewer` / `:chistory` |
+
+After writing to the list, trouble fires **`QuickFixCmdPost`** with a `Trouble`
+pattern — the same hook `:vimgrep` and `:make` use. So the standard idiom gets
+you automatic show/hide, on the initial load *and* on every auto refresh:
+
+```lua
+vim.api.nvim_create_autocmd("QuickFixCmdPost", {
+  pattern = "Trouble",
+  callback = function()
+    vim.cmd("cwindow")
+  end,
+})
+```
+
+If you already have `autocmd QuickFixCmdPost [^l]* cwindow` in your config, it
+matches `Trouble` and this works with no changes.
 
 The actions that remain are the ones the quickfix list can't do for itself,
 because they act on trouble's items rather than on the window:
@@ -278,8 +287,8 @@ because they act on trouble's items rather than on the window:
 :Trouble diagnostics inspect         " print the raw source item
 ```
 
-Opening a mode makes its quickfix list the current one, so the quickfix
-commands above act on it right away.
+Loading a mode makes its quickfix list the current one, so the quickfix commands
+above act on it right away.
 
 Please refer to the API section for more information on the available actions and options.
 
@@ -315,26 +324,12 @@ You can use the following functions in your keybindings:
 <!-- api:start -->
 
 ```lua
--- Opens trouble with the given mode.
--- The results are written to the quickfix list and the quickfix
--- window is opened, unless `opts.focus = false`.
+-- Loads the given mode into its quickfix list and makes it the current one.
+-- The quickfix window is not opened: use `:copen`, or a `cwindow` autocmd on
+-- `QuickFixCmdPost` (trouble fires it with a `Trouble` pattern).
 ---@param opts? trouble.Mode | { refresh?: boolean } | string
 ---@return trouble.List?
 require("trouble").open(opts)
-
--- Closes the quickfix window when it shows the results of the given mode.
----@param opts? trouble.Mode|string
----@return trouble.List?
-require("trouble").close(opts)
-
--- Toggle the given mode.
----@param opts? trouble.Mode|string
----@return trouble.List?
-require("trouble").toggle(opts)
-
--- Returns true when the quickfix window is open and shows the given mode.
----@param opts? trouble.Mode|string
-require("trouble").is_open(opts)
 
 -- Refresh the given mode, or all modes when none is given.
 -- Normally this is done automatically, unless you disabled auto refresh.

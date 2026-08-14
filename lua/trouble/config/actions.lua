@@ -24,6 +24,8 @@ local native = {
   close = ":cclose",
   focus = ":copen",
   cancel = "<C-w>p",
+  toggle = ":copen / :cclose, or :cwindow",
+  is_open = ":cwindow, or check `getqflist({winid=0}).winid`",
 }
 
 -- NOTE: `refresh` is deliberately absent. `trouble.api` defines it, and that

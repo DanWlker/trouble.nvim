@@ -1,12 +1,9 @@
 local Format = require("trouble.format")
 
---- Conversion of `trouble.Item`s to quickfix entries,
---- and management of the quickfix list/window.
+--- Conversion of `trouble.Item`s to quickfix entries, and writing them to the
+--- quickfix list. Nothing here opens, closes or focuses a window: that is what
+--- `:copen`, `:cclose` and `:cwindow` are for.
 local M = {}
-
----@class trouble.Qf.opts
----@field open_cmd? string command used to open the quickfix window
----@field height? number height of the quickfix window
 
 ---@class trouble.Qf.entry
 ---@field bufnr? number
@@ -143,6 +140,8 @@ function M.activate(id)
 end
 
 --- Returns the window id of the quickfix window, if it is open.
+--- Only used to keep the cursor steady across a rewrite. Opening and closing
+--- the window is `:copen` / `:cclose` / `:cwindow`, and is left to the user.
 ---@return number?
 function M.win()
   for _, win in ipairs(vim.fn.getwininfo()) do
@@ -152,30 +151,10 @@ function M.win()
   end
 end
 
-function M.is_open()
-  return M.win() ~= nil
-end
-
---- Opens the quickfix window.
----@param opts? trouble.Config
-function M.open(opts)
-  opts = opts or {}
-  local qf = opts.qf or {}
-  local cmd = qf.open_cmd or "botright copen"
-  if type(qf.height) == "number" then
-    cmd = cmd .. " " .. qf.height
-  end
-
-  local from = vim.api.nvim_get_current_win()
-  vim.cmd(cmd)
-
-  if opts.focus == false and vim.api.nvim_win_is_valid(from) then
-    vim.api.nvim_set_current_win(from)
-  end
-end
-
-function M.close()
-  vim.cmd("cclose")
+--- Fires `QuickFixCmdPost` with a `Trouble` pattern, the same way `:vimgrep`
+--- and `:make` do, so that the usual `cwindow` autocmd picks up the results.
+function M.post()
+  vim.api.nvim_exec_autocmds("QuickFixCmdPost", { pattern = "Trouble", modeline = false })
 end
 
 --- Index of the entry the quickfix commands currently point at.

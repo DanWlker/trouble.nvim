@@ -13,21 +13,11 @@ local M = {}
 ---@field sorters? table<string, trouble.SorterFn> custom sorters
 local defaults = {
   debug = false,
-  auto_close = false, -- close the quickfix window when there are no items
-  auto_open = false, -- open the quickfix window when there are items
-  auto_refresh = true, -- auto refresh while the list is active
-  auto_jump = false, -- auto jump to the item when there's only one
-  focus = true, -- focus the quickfix window when opened
+  auto_refresh = true, -- keep the list in sync while it is the current one
+  auto_jump = false, -- jump to the item when there's only one
   max_items = 200, -- limit number of items that can be displayed per section
   pinned = false, -- When pinned, the list will be bound to the current buffer
   warn_no_results = true, -- show a warning when there are no results
-  open_no_results = false, -- open the quickfix window when there are no results
-  -- Options for the quickfix window itself.
-  ---@type trouble.Qf.opts
-  qf = {
-    open_cmd = "botright copen", -- command used to open the quickfix window
-    height = 10, -- height of the quickfix window. Set to `false` for the Neovim default.
-  },
   -- Throttle/Debounce settings. Should usually not be changed.
   ---@type table<string, number|{ms:number, debounce?:boolean}>
   throttle = {
@@ -57,7 +47,6 @@ local defaults = {
     symbols = {
       desc = "document symbols",
       mode = "lsp_document_symbols",
-      focus = false,
       filter = {
         -- remove Package since luals uses it for control flow structures
         ["not"] = { ft = "lua", kind = "Package" },
@@ -130,22 +119,6 @@ function M.setup(opts)
   end
   opts = opts or {}
 
-  if opts.auto_open then
-    require("trouble.util").warn({
-      "You specified `auto_open = true` in your global config.",
-      "This is probably not what you want.",
-      "Add it to the mode you want to auto open instead.",
-      "```lua",
-      "opts = {",
-      "  modes = {",
-      "    diagnostics = { auto_open = true },",
-      "  }",
-      "}",
-      "```",
-      "Disabling global `auto_open`.",
-    })
-    opts.auto_open = nil
-  end
   opts.mode = nil
   options = {}
   options = M.get(opts)
@@ -159,13 +132,6 @@ function M.setup(opts)
     desc = "Trouble",
   })
   require("trouble.main").setup()
-  vim.schedule(function()
-    for mode, mode_opts in pairs(options.modes) do
-      if mode_opts.auto_open then
-        require("trouble.list").new(M.get(mode))
-      end
-    end
-  end)
   return options
 end
 

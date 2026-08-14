@@ -10,7 +10,7 @@ local M = {}
 M.last_mode = nil ---@type string?
 
 --- Options that only steer this call, and never justify rebuilding a list.
-local transient = { mode = true, refresh = true, focus = true, _action = true }
+local transient = { mode = true, refresh = true, _action = true }
 
 --- Signature of the extra options passed to `open`. When it changes,
 --- the list is rebuilt so that things like `filter.buf=0` take effect.
@@ -62,9 +62,9 @@ function M._find(opts)
   return List.get(resolved.mode), resolved
 end
 
--- Opens trouble with the given mode.
--- The results are written to the quickfix list and the quickfix
--- window is opened, unless `opts.focus = false`.
+-- Loads the given mode into its quickfix list and makes it the current one.
+-- The quickfix window is not opened: use `:copen`, or a `cwindow` autocmd on
+-- `QuickFixCmdPost` (trouble fires it with a `Trouble` pattern).
 ---@param opts? trouble.Mode | { refresh?: boolean } | string
 ---@return trouble.List?
 function M.open(opts)
@@ -101,44 +101,11 @@ function M.open(opts)
     list._sig = sig
   end
 
-  if list:is_open() then
-    if opts.refresh ~= false then
-      list:refresh()
-    end
-  else
-    list:open()
-  end
-  return list
-end
-
--- Closes the quickfix window when it shows the results of the given mode.
----@param opts? trouble.Mode|string
----@return trouble.List?
-function M.close(opts)
-  local list = M._find(opts)
-  if list then
-    list:close()
+  if list:is_active() and opts.refresh == false then
     return list
   end
-end
-
--- Toggle the given mode.
----@param opts? trouble.Mode|string
----@return trouble.List?
-function M.toggle(opts)
-  if M.is_open(opts) then
-    ---@diagnostic disable-next-line: return-type-mismatch
-    return M.close(opts)
-  else
-    return M.open(opts)
-  end
-end
-
--- Returns true when the quickfix window is open and shows the given mode.
----@param opts? trouble.Mode|string
-function M.is_open(opts)
-  local list = M._find(opts)
-  return list ~= nil and list:is_open()
+  list:open()
+  return list
 end
 
 -- Refresh the given mode, or all modes when none is given.
