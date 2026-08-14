@@ -167,8 +167,11 @@ end
 --- Auto refresh fires on events like `CursorHold` that usually produce the
 --- exact same results. Rewriting the list anyway replaces the whole quickfix
 --- buffer and makes the window flicker, so an unchanged result is skipped.
---- `force` is used when the user asked for the mode explicitly, so that
---- `cwindow` still gets a chance to reopen a window they closed.
+---
+--- `force` means the user asked for this mode explicitly (`:Trouble <mode>`).
+--- Only then is `QuickFixCmdPost` fired: that event means "a quickfix *command*
+--- finished", and auto refresh is not a command. Firing it on every refresh
+--- would let a `cwindow` autocmd reopen a window the user just closed.
 ---@param opts? {force?: boolean}
 ---@return boolean written
 function M:write(opts)
@@ -189,7 +192,9 @@ function M:write(opts)
     self.list_id = Qf.create(win, entries, title)
   end
   self._written = entries
-  Qf.post(win)
+  if opts and opts.force then
+    Qf.post(win)
+  end
   return true
 end
 

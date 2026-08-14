@@ -22,8 +22,10 @@ vim.api.nvim_create_autocmd("QuickFixCmdPost", {
 ```
 
 `:cwindow` / `:lwindow` open the window when the list is non-empty and close it
-when it is empty, so this covers what `auto_open` and `auto_close` used to do —
-on the initial load and on every auto refresh.
+when it is empty.
+
+`QuickFixCmdPost` fires only when you load a mode, not on auto refresh, so a
+window you closed stays closed while the list carries on updating behind it.
 
 ### Send a mode to the other list
 
@@ -151,8 +153,9 @@ vim.api.nvim_create_autocmd("QuickFixCmdPost", {
 
 ### Keeping the list fresh
 
-Loading a mode makes its quickfix list the current one and starts auto refresh.
-From then on the list follows its source until you switch to another list.
+Loading a mode makes its list the current one and starts auto refresh. From then
+on the list follows its source until you switch to another list. Auto refresh
+never opens or closes a window — only an explicit `:Trouble <mode>` does.
 
 Trouble only ever touches the quickfix list it created for a mode. If you push
 your own list with `:grep` or `setqflist()`, auto refresh stops writing until you

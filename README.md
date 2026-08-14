@@ -310,8 +310,7 @@ window's list intact. Close the window and the list goes with it.
 After writing to the list, trouble fires **`QuickFixCmdPost`** — the same hook
 `:vimgrep` and `:make` use — with pattern `Trouble` for the quickfix list and
 `lTrouble` for a location list, mirroring Vim's own `grep` / `lgrep` naming. So
-the standard idiom gets you automatic show/hide, on the initial load *and* on
-every auto refresh:
+the standard idiom opens the window for you:
 
 ```lua
 vim.api.nvim_create_autocmd("QuickFixCmdPost", {
@@ -337,6 +336,11 @@ If you already have the classic pair in your config, both already match:
 autocmd QuickFixCmdPost [^l]* cwindow
 autocmd QuickFixCmdPost l*    lwindow
 ```
+
+The event fires **only when you load a mode**, never on an auto refresh — the
+same way `:vimgrep` fires it once when you run it. So closing the window sticks:
+the list keeps updating in the background, but nothing pops it back open until
+you ask for it again.
 
 The actions that remain are the ones the quickfix list can't do for itself,
 because they act on trouble's items rather than on the window:
