@@ -54,10 +54,11 @@ M.config = {
       desc = "document symbols",
       events = {
         "BufEnter",
-        -- symbols are cached on changedtick,
-        -- so it's ok to refresh often
+        -- symbols are cached on changedtick, so it's ok to refresh often.
+        -- NOTE: no CursorMoved here. It only existed to make the old tree view
+        -- follow the symbol under the cursor; the symbol list itself doesn't
+        -- change when the cursor moves.
         { event = "TextChanged", main = true },
-        { event = "CursorMoved", main = true },
         { event = "LspAttach", main = true },
       },
       source = "lsp.document_symbols",

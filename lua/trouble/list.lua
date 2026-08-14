@@ -19,6 +19,7 @@ local Util = require("trouble.util")
 ---@field sections trouble.Section[]
 ---@field first_update trouble.Promise
 ---@field qf_id? number
+---@field _written? trouble.Qf.entry[] last entries written to the quickfix list
 ---@field _filters table<string, trouble.ListFilter>
 local M = {}
 M.__index = M
@@ -126,15 +127,30 @@ end
 
 --- Writes the items to the quickfix list, creating it when needed,
 --- then lets `QuickFixCmdPost` listeners (usually `cwindow`) react.
-function M:write()
+---
+--- Auto refresh fires on events like `CursorHold` that usually produce the
+--- exact same results. Rewriting the list anyway replaces the whole quickfix
+--- buffer and makes the window flicker, so an unchanged result is skipped.
+--- `force` is used when the user asked for the mode explicitly, so that
+--- `cwindow` still gets a chance to reopen a window they closed.
+---@param opts? {force?: boolean}
+---@return boolean written
+function M:write(opts)
   local entries = self:entries()
+
+  if not (opts and opts.force) and Qf.exists(self.qf_id) and Qf.same(entries, self._written) then
+    return false
+  end
+
   local title = self:title()
   if Qf.exists(self.qf_id) then
     Qf.replace(self.qf_id, entries, title)
   else
     self.qf_id = Qf.create(entries, title)
   end
+  self._written = entries
   Qf.post()
+  return true
 end
 
 function M:listen()
@@ -179,7 +195,7 @@ function M:open()
     :next(function()
       local count = self:count()
 
-      self:write()
+      self:write({ force = true })
       Qf.activate(self.qf_id)
 
       if count == 0 then

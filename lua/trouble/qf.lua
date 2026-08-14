@@ -61,6 +61,34 @@ function M.entry(item, format, opts)
   return entry
 end
 
+--- True when two entry lists would render identically.
+--- Rewriting the list replaces the whole quickfix buffer, which makes the
+--- window redraw and its syntax flash, so an unchanged result must not be
+--- written back.
+---@param a trouble.Qf.entry[]
+---@param b? trouble.Qf.entry[]
+function M.same(a, b)
+  if not b or #a ~= #b then
+    return false
+  end
+  for i = 1, #a do
+    local x, y = a[i], b[i]
+    if
+      x.bufnr ~= y.bufnr
+      or x.filename ~= y.filename
+      or x.lnum ~= y.lnum
+      or x.col ~= y.col
+      or x.end_lnum ~= y.end_lnum
+      or x.end_col ~= y.end_col
+      or x.type ~= y.type
+      or x.text ~= y.text
+    then
+      return false
+    end
+  end
+  return true
+end
+
 ---@param items trouble.Item[]
 ---@param format string
 ---@param opts trouble.Config
