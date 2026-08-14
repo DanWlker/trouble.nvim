@@ -120,6 +120,28 @@ function M.open(opts)
   return list
 end
 
+-- Closes the window showing the given mode's list.
+-- With no mode, closes every window showing a trouble list, leaving windows
+-- that show something else (your own `:grep` results, say) alone.
+---@param opts? trouble.Mode|string
+function M.close(opts)
+  if type(opts) == "string" then
+    opts = { mode = opts }
+  end
+
+  ---@type trouble.List[]
+  local lists = List.all()
+  if type(opts) == "table" and opts.mode then
+    lists = { (M._find(opts)) }
+  end
+
+  for _, list in ipairs(lists) do
+    if list:is_open() then
+      Qf.close(list:win())
+    end
+  end
+end
+
 -- Refresh the given mode, or all modes when none is given.
 -- Normally this is done automatically, unless you disabled auto refresh.
 ---@param opts? trouble.Mode|string

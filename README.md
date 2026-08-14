@@ -292,6 +292,11 @@ window's list intact. Close the window and the list goes with it.
 there are results and stays away when there aren't. Running the same mode again
 closes it. Switching to a *different* mode never closes — it shows the new list.
 
+`:Trouble close` shuts every window showing a trouble list — handy when a
+quickfix window and a couple of location windows are open at once. It leaves
+windows showing anything else (your own `:grep` results, say) alone.
+`:Trouble <mode> close` closes just that mode.
+
 Auto refresh never touches the window. Close it and it stays closed while the
 list keeps updating behind you, so a background re-lint can't pop it back open.
 
@@ -304,6 +309,7 @@ The actions that remain are the ones the quickfix list can't do for itself,
 because they act on trouble's items rather than on the window:
 
 ```vim
+:Trouble close                       " close every trouble window
 :Trouble diagnostics refresh         " refetch from the source
 :Trouble diagnostics toggle_refresh  " stop/resume keeping the list in sync
 :Trouble diagnostics filter filter.severity=1
@@ -355,6 +361,12 @@ You can use the following functions in your keybindings:
 ---@param opts? trouble.Mode | { refresh?: boolean } | string
 ---@return trouble.List?
 require("trouble").open(opts)
+
+-- Closes the window showing the given mode's list.
+-- With no mode, closes every window showing a trouble list, leaving windows
+-- that show something else (your own `:grep` results, say) alone.
+---@param opts? trouble.Mode|string
+require("trouble").close(opts)
 
 -- Refresh the given mode, or all modes when none is given.
 -- Normally this is done automatically, unless you disabled auto refresh.
