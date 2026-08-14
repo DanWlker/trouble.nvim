@@ -3,18 +3,6 @@ local uv = vim.loop or vim.uv
 
 local M = {}
 
----@param fn function
-function M.noautocmd(fn)
-  local ei = vim.o.eventignore
-  vim.o.eventignore = "all"
-  fn()
-  vim.o.eventignore = ei
-end
-
-function M.is_win()
-  return uv.os_uname().sysname:find("Windows") ~= nil
-end
-
 ---@param opts? {msg?: string}
 function M.try(fn, opts)
   local ok, err = pcall(fn)
@@ -81,19 +69,6 @@ function M.debug(msg, ...)
       msg = msg .. "\n```lua\n" .. vim.inspect(obj) .. "\n```"
     end
     M.notify(msg, { title = "Trouble (debug)" })
-  end
-end
-
----@param buf number
----@param row number
----@param ns number
----@param col number
----@param opts vim.api.keyset.set_extmark
----@param debug_info? any
-function M.set_extmark(buf, ns, row, col, opts, debug_info)
-  local ok, err = pcall(vim.api.nvim_buf_set_extmark, buf, ns, row, col, opts)
-  if not ok and Config.debug then
-    M.debug("Failed to set extmark for preview", { info = debug_info, row = row, col = col, opts = opts, error = err })
   end
 end
 

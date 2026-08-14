@@ -168,34 +168,6 @@ function M.all(promises)
   end)
 end
 
----@param promises trouble.Promise[]
-function M.all_settled(promises)
-  return P.new(function(resolve)
-    local results = {}
-    local pending = #promises
-    if pending == 0 then
-      return resolve(results)
-    end
-    for i, promise in ipairs(promises) do
-      promise:next(function(value)
-        results[i] = { status = "fulfilled", value = value }
-        pending = pending - 1
-        if pending == 0 then
-          resolve(results)
-        end
-      end, function(reason)
-        results[i] = { status = "rejected", reason = reason }
-        pending = pending - 1
-        if pending == 0 then
-          resolve(results)
-        end
-      end)
-    end
-  end)
-end
-
 M.new = P.new
-
--- M.new(function() end):timeout(1000)
 
 return M

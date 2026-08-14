@@ -5,29 +5,6 @@ local Util = require("trouble.util")
 ---@alias trouble.Action {action: trouble.ActionFn, desc?: string, mode?: string}
 ---@alias trouble.Action.spec string|trouble.ActionFn|trouble.Action|{action: string}
 
---- Actions that used to wrap a quickfix command. Use the quickfix command
---- instead: the results live in the quickfix list, so all of these already work.
----@type table<string, string>
-local native = {
-  next = ":cnext",
-  prev = ":cprev",
-  previous = ":cprev",
-  first = ":cfirst",
-  last = ":clast",
-  jump = ":cc, or <CR> in the quickfix window",
-  jump_only = ":cc, or <CR> in the quickfix window",
-  jump_close = ":cc | cclose",
-  jump_split = "<C-w><CR> in the quickfix window",
-  jump_split_close = ":split | cc | cclose",
-  jump_vsplit = ":vsplit | cc",
-  jump_vsplit_close = ":vsplit | cc | cclose",
-  close = ":cclose",
-  focus = ":copen",
-  cancel = "<C-w>p",
-  toggle = ":copen / :cclose, or :cwindow",
-  is_open = ":cwindow, or check `getqflist({winid=0}).winid`",
-}
-
 -- NOTE: `refresh` is deliberately absent. `trouble.api` defines it, and that
 -- shadows any action of the same name.
 
@@ -63,11 +40,7 @@ local M = {
 
 return setmetatable(M, {
   __index = function(_, k)
-    if native[k] then
-      Util.warn("`" .. k .. "` was removed. Use **" .. native[k] .. "** instead.", { id = "removed_action" })
-    else
-      Util.error("Action not found: " .. k)
-    end
+    Util.error("Action not found: " .. k)
     -- keep callers from blowing up on a missing action
     return function() end
   end,

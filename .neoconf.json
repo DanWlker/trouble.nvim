@@ -1,12 +1,7 @@
 {
   "neodev": {
     "library": {
-      "plugins": [
-        "plenary.nvim",
-        "nvim-web-devicons",
-        "telescope.nvim",
-        "lazy.nvim"
-      ]
+      "plugins": ["lazy.nvim"]
     }
   },
   "lspconfig": {

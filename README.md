@@ -340,11 +340,6 @@ require("trouble").refresh(opts)
 ---@param opts? trouble.Mode|string
 require("trouble").get_items(opts)
 
--- Returns the quickfix entries for a given mode, without touching
--- the quickfix list. Useful to build your own list.
----@param opts? trouble.Mode|string
-require("trouble").get_entries(opts)
-
 -- Returns the number of items in the quickfix list.
 require("trouble").count()
 

@@ -1,4 +1,3 @@
-local Cache = require("trouble.cache")
 local Util = require("trouble.util")
 
 ---@alias trouble.Pos {[1]:number, [2]:number}
@@ -15,7 +14,6 @@ local Util = require("trouble.util")
 ---@field end_pos? trouble.Pos (1,0)-indexed
 ---@field item table<string,any>
 ---@field source string
----@field cache table<string,any>
 ---@field range? trouble.Range
 local M = {}
 
@@ -41,7 +39,6 @@ function M.new(opts)
     self.basename = table.remove(parts)
     self.dirname = table.concat(parts, "/")
   end
-  self.cache = Cache.new("item")
   return setmetatable(self, M)
 end
 
@@ -64,29 +61,6 @@ function M.add_id(items, fields)
       item.id = table.concat(id, ":")
     end
   end
-end
-
----@return string?
-function M:get_ft(buf)
-  if self.buf and vim.api.nvim_buf_is_loaded(self.buf) then
-    return vim.bo[self.buf].filetype
-  end
-  if not self.filename then
-    return
-  end
-  local ft = Cache.ft[self.filename]
-  if ft == nil then
-    -- HACK: make sure we always pass a valid buf,
-    -- otherwise some detectors will fail hard (like ts)
-    ft = vim.filetype.match({ filename = self.filename, buf = buf or 0 })
-    Cache.ft[self.filename] = ft or false -- cache misses too
-  end
-  return ft
-end
-
-function M:get_lang(buf)
-  local ft = self:get_ft(buf)
-  return ft and ft ~= "" and vim.treesitter.language.get_lang(ft) or nil
 end
 
 function M:__index(k)

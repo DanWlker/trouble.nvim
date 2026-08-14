@@ -1,29 +1,12 @@
-local Cache = require("trouble.cache")
 local Util = require("trouble.util")
 
 local M = {}
 
 ---@alias trouble.spec.format string|trouble.Format|(string|trouble.Format)[]
----@alias trouble.Format {text:string, hl?:string}
+---@alias trouble.Format {text:string, fi?:string}
 
 ---@alias trouble.Formatter fun(ctx: trouble.Formatter.ctx): trouble.spec.format?
 ---@alias trouble.Formatter.ctx {item: trouble.Item, field:string, value:string, opts:trouble.Config}
-
----@param source string
----@param field string
-function M.default_hl(source, field)
-  if not source then
-    return "Trouble" .. Util.camel(field)
-  end
-  local key = source .. field
-  local value = Cache.default_hl[key]
-  if value then
-    return value
-  end
-  local hl = "Trouble" .. Util.camel(source) .. Util.camel(field)
-  Cache.default_hl[key] = hl
-  return hl
-end
 
 ---@type (fun(file: string, ext: string): string, string)[]
 local icons = {
@@ -36,9 +19,9 @@ local icons = {
 }
 function M.get_icon(file, ext)
   while #icons > 0 do
-    local ok, icon, hl = pcall(icons[1], file, ext)
+    local ok, icon = pcall(icons[1], file, ext)
     if ok then
-      return icon, hl
+      return icon
     end
     table.remove(icons, 1)
   end
@@ -72,18 +55,12 @@ M.formatters = {
     if not ctx.item.code or ctx.item.code == vim.NIL then
       return
     end
-    return {
-      text = "(" .. ctx.item.code .. ")",
-      hl = "TroubleCode",
-    }
+    return { text = "(" .. ctx.item.code .. ")" }
   end,
   severity = function(ctx)
     local severity = ctx.item.severity or vim.diagnostic.severity.ERROR
     local name = vim.diagnostic.severity[severity] or "OTHER"
-    return {
-      text = name,
-      hl = "Diagnostic" .. Util.camel(name:lower()),
-    }
+    return { text = name }
   end,
   severity_icon = function(ctx)
     local severity = ctx.item.severity or vim.diagnostic.severity.ERROR
@@ -98,7 +75,7 @@ M.formatters = {
     if vim.fn.has("nvim-0.10.0") == 1 then
       local config = vim.diagnostic.config() or {}
       if config.signs == nil or type(config.signs) == "boolean" then
-        return { text = sign and sign.text or name:sub(1, 1), hl = "DiagnosticSign" .. name }
+        return { text = sign and sign.text or name:sub(1, 1) }
       end
       local signs = config.signs or {}
       if type(signs) == "function" then
@@ -106,18 +83,17 @@ M.formatters = {
       end
       return {
         text = type(signs) == "table" and signs.text and signs.text[severity] or sign and sign.text or name:sub(1, 1),
-        hl = "DiagnosticSign" .. name,
       }
     else
-      return sign and { text = sign.text, hl = sign.texthl } or { text = name } or nil
+      return sign and { text = sign.text } or { text = name } or nil
     end
   end,
   file_icon = function(ctx)
     local item = ctx.item --[[@as Diagnostic|trouble.Item]]
     local file = vim.fn.fnamemodify(item.filename, ":t")
     local ext = vim.fn.fnamemodify(item.filename, ":e")
-    local icon, color = M.get_icon(file, ext)
-    return icon and { text = icon .. " ", hl = color } or ""
+    local icon = M.get_icon(file, ext)
+    return icon and { text = icon .. " " } or ""
   end,
   -- Indents nested items (LSP document symbols) by their depth,
   -- since the quickfix list has no notion of a hierarchy.
@@ -149,10 +125,7 @@ M.formatters = {
     end
     local icon = ctx.opts.icons.kinds[ctx.item.kind]
     if icon then
-      return {
-        text = icon,
-        hl = "TroubleIcon" .. ctx.item.kind,
-      }
+      return { text = icon }
     end
   end,
 }
@@ -182,7 +155,6 @@ function M.field(ctx)
     end
   end
   for _, f in ipairs(format) do
-    f.hl = f.hl or M.default_hl(ctx.item.source, ctx.field)
     f.fi = f.fi or ctx.field
   end
   return format
@@ -193,7 +165,6 @@ end
 function M.format(format, ctx)
   ---@type trouble.Format[]
   local ret = {}
-  local hl ---@type string?
   while true do
     ---@type string?,string,string
     local before, fields, after = format:match("^(.-){(.-)}(.*)$")
@@ -202,37 +173,26 @@ function M.format(format, ctx)
     end
     format = after
     if #before > 0 then
-      ret[#ret + 1] = { text = before, hl = hl }
+      ret[#ret + 1] = { text = before }
     end
 
     for _, field in Util.split(fields, "|") do
-      ---@type string,string
-      local field_name, field_hl = field:match("^(.-):(.+)$")
-      if field_name then
-        field = field_name
-      end
-      if field == "hl" then
-        hl = field_hl
-      else
-        ---@cast ctx trouble.Formatter.ctx
-        ctx.field = field
-        ctx.value = ctx.item[field]
-        local ff = M.field(ctx)
-        if ff then
-          for _, f in ipairs(ff) do
-            if hl or field_hl then
-              f.hl = field_hl or hl
-            end
-            ret[#ret + 1] = f
-          end
-          -- only render the first field
-          break
-        end
+      -- a `{field:Group}` suffix used to pick a highlight group. The quickfix
+      -- list has no per-entry highlights, so the suffix is accepted and ignored.
+      field = field:match("^(.-):.+$") or field
+      ---@cast ctx trouble.Formatter.ctx
+      ctx.field = field
+      ctx.value = ctx.item[field]
+      local ff = M.field(ctx)
+      if ff then
+        vim.list_extend(ret, ff)
+        -- only render the first field that resolves
+        break
       end
     end
   end
   if #format > 0 then
-    ret[#ret + 1] = { text = format, hl = hl }
+    ret[#ret + 1] = { text = format }
   end
   return ret
 end

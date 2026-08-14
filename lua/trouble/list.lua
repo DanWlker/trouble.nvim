@@ -212,7 +212,22 @@ function M:at()
   if idx < 1 then
     return {}
   end
-  return { idx = idx, item = self:items()[idx] }
+  return { idx = idx, item = self:item_at(idx) }
+end
+
+--- The item at a 1-based index across all sections,
+--- without materialising the whole list.
+---@param idx number
+---@return trouble.Item?
+function M:item_at(idx)
+  local offset = 0
+  for _, section in ipairs(self.sections) do
+    local n = #section.items
+    if idx <= offset + n then
+      return section.items[idx - offset]
+    end
+    offset = offset + n
+  end
 end
 
 --- Removes the entry at `idx` from the list, and disables auto refresh
@@ -277,11 +292,6 @@ function M:filter(filter, opts)
     section.filter = filters
   end
   self:refresh({ opening = true })
-end
-
----@param id string
-function M:get_filter(id)
-  return self._filters[id]
 end
 
 return M

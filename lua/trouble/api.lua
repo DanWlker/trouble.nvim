@@ -152,14 +152,6 @@ function M.get_items(opts)
   return list and list:items() or {}
 end
 
--- Returns the quickfix entries for a given mode, without touching
--- the quickfix list. Useful to build your own list.
----@param opts? trouble.Mode|string
-function M.get_entries(opts)
-  local list = M._find(opts)
-  return list and list:entries() or {}
-end
-
 -- Returns the number of items in the quickfix list.
 function M.count()
   return Qf.count()
