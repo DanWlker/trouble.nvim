@@ -134,8 +134,11 @@ M.formatters.severity = M.cached_formatter(M.formatters.severity, "severity")
 
 ---@param ctx trouble.Formatter.ctx
 function M.field(ctx)
+  -- NOTE: not trimmed here. `M.text` collapses whitespace for multi-field
+  -- formats, and a lone `{text}` has to keep the source line's indentation
+  -- so that `col`/`end_col` still index into it.
   ---@type trouble.Format[]
-  local format = { { fi = ctx.field, text = vim.trim(tostring(ctx.item[ctx.field] or "")) } }
+  local format = { { fi = ctx.field, text = tostring(ctx.item[ctx.field] or "") } }
 
   local opts = ctx.opts
 
@@ -205,10 +208,19 @@ end
 ---@param ctx {item: trouble.Item, opts:trouble.Config}
 ---@return string
 function M.text(format, ctx)
+  local segments = M.format(format, ctx)
+
+  -- A format that is nothing but `{text}` passes the source line through
+  -- verbatim, including its indentation, so that `col`/`end_col` still index
+  -- into it. nvim-bqf and quicker.nvim rely on that to highlight the match.
+  if #segments == 1 and segments[1].fi == "text" then
+    return (segments[1].text:gsub("[\n\r]+", " "))
+  end
+
   local indent = ""
   local parts = {} ---@type string[]
 
-  for i, f in ipairs(M.format(format, ctx)) do
+  for i, f in ipairs(segments) do
     if i == 1 and f.fi == "indent" then
       indent = f.text
     else

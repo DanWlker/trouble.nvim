@@ -74,7 +74,9 @@ M.config = {
         { event = "LspAttach", main = true },
       },
       sort = { "filename", "pos", "text" },
-      format = "{text} ({item.client})",
+      -- just the source line, like `:vimgrep`. Anything appended here breaks
+      -- the text/col correspondence that quickfix plugins rely on.
+      format = "{text}",
     },
     lsp = {
       desc = "LSP definitions, references, implementations, type definitions, and declarations",
@@ -97,7 +99,7 @@ for _, mode in ipairs({ "incoming_calls", "outgoing_calls" }) do
     title = Util.camel(mode, " "),
     desc = Util.camel(mode, " "),
     source = "lsp." .. mode,
-    format = "{kind_icon} {text} ({item.client})",
+    format = "{kind_icon} {text}",
   }
 end
 
@@ -378,7 +380,10 @@ function M.range_to_item(client, range)
       client_id = client.id,
       client = client.name,
       location = range.location,
-      text = range.line and vim.trim(range.line) or nil,
+      -- NOT trimmed: `col`/`end_col` are byte offsets into the raw line, and
+      -- quickfix plugins (nvim-bqf, quicker.nvim) highlight the match by
+      -- applying those offsets to the entry text.
+      text = range.line,
     },
   })
 end
