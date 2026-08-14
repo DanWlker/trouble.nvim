@@ -99,7 +99,7 @@ for _, mode in ipairs({ "incoming_calls", "outgoing_calls" }) do
     title = Util.camel(mode, " "),
     desc = Util.camel(mode, " "),
     source = "lsp." .. mode,
-    format = "{kind_icon} {text}",
+    format = "{text}",
   }
 end
 
@@ -234,6 +234,8 @@ function M.get.document_symbols(cb)
       for _, res in ipairs(results) do
         vim.list_extend(items, M.results_to_items(res.client, res.result, params.textDocument.uri))
       end
+      -- symbols render as `{kind_icon} {symbol.name}`, a synthesized label
+      -- rather than a source line, so `after` is fine here
       Item.add_text(items, { mode = "after" })
       ---@diagnostic disable-next-line: no-unknown
       Cache.symbols[buf] = items
@@ -281,16 +283,9 @@ function M.call_hierarchy(cb, incoming)
             vim.list_extend(items, M.results_to_items(client, todo))
           end
         end
-        Item.add_text(items, { mode = "after" })
 
         if incoming then
-          -- for incoming calls, we actually want the call locations, not just the caller
-          -- but we use the caller's item text as the call location text
-          local texts = {} ---@type table<lsp.CallHierarchyItem, string>
-          for _, item in ipairs(items) do
-            texts[item.item.symbol] = item.item.text
-          end
-
+          -- for incoming calls we want the call sites, not just the callers
           items = {}
           for _, results in ipairs(responses) do
             for _, res in ipairs(results) do
@@ -302,7 +297,6 @@ function M.call_hierarchy(cb, incoming)
                 for _, r in ipairs(call.fromRanges or {}) do
                   local t = vim.deepcopy(call.from) --[[@as lsp.ResultItem]]
                   t.location = { range = r or call.from.selectionRange or call.from.range, uri = call.from.uri }
-                  t.text = texts[call.from]
                   todo[#todo + 1] = t
                 end
               end
@@ -310,6 +304,12 @@ function M.call_hierarchy(cb, incoming)
             end
           end
         end
+
+        -- `full`, not `after`: the entry text has to be the whole source line so
+        -- that `col`/`end_col` index into it. Upstream used the *caller's*
+        -- declaration as the text of a *call site*, which points the position
+        -- and the text at two different lines.
+        Item.add_text(items, { mode = "full" })
         cb(items)
       end
     )
