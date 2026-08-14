@@ -2,30 +2,8 @@
 
 ## Quickfix Window
 
-Trouble never opens or closes the window, so this is all plain Neovim.
-
-### Show the window automatically when there are results
-
-```lua
-vim.api.nvim_create_autocmd("QuickFixCmdPost", {
-  pattern = "Trouble",
-  callback = function()
-    vim.cmd("cwindow")
-  end,
-})
-vim.api.nvim_create_autocmd("QuickFixCmdPost", {
-  pattern = "lTrouble",
-  callback = function()
-    vim.cmd("lwindow")
-  end,
-})
-```
-
-`:cwindow` / `:lwindow` open the window when the list is non-empty and close it
-when it is empty.
-
-`QuickFixCmdPost` fires only when you load a mode, not on auto refresh, so a
-window you closed stays closed while the list carries on updating behind it.
+`:Trouble <mode>` shows the list with `:cwindow`/`:lwindow` and toggles it shut
+when you run the same mode again. Everything below is plain Neovim.
 
 ### Send a mode to the other list
 

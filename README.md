@@ -9,8 +9,9 @@ custom window UI removed. You get trouble's sources, filters, sorters and modes;
 Neovim does everything else.
 
 Trouble's entire job is to **fill a quickfix or location list and keep it fresh**.
-It never opens, closes or focuses a window — `:copen`, `:cclose` and `:cwindow`
-(or their `:l...` counterparts) already do that, and better than a plugin option can.
+`:Trouble <mode>` loads the results and shows them; running it again closes the
+window, so the command toggles. Everything you then *do* with the results is a
+plain quickfix command — trouble adds no navigation, jumping or preview of its own.
 
 Project-wide results go to the **quickfix list**. Buffer-scoped results — document
 symbols, diagnostics for the current buffer — go to that window's **location
@@ -38,9 +39,9 @@ Everything that draws a window is gone; everything that produces items stays:
 - results are written to the **quickfix list**, and that's the whole output
 - no custom window, no preview window, no folds, no indent guides, no highlight groups
 - no trouble keymaps — the quickfix window keeps its own
-- **no window management at all**: no `open`/`close`/`toggle`/`is_open`, no
-  `focus`, no `auto_open`/`auto_close`, no window size or position options.
-  `:copen`, `:cclose` and `:cwindow` cover every one of those.
+- window handling is `:cwindow`/`:lwindow` under the hood, so there is no
+  `focus`, no `auto_open`/`auto_close`, and no size or position options —
+  an empty result hides the window, a non-empty one shows it
 - the `qflist`, `loclist` and `quickfix` modes are gone, since the quickfix list is now the output
 - the `statusline` component is gone
 - the `telescope`, `fzf` and `snacks` sources are gone: those pickers already
@@ -82,29 +83,10 @@ Install the plugin with your preferred package manager:
     { "<leader>cs", "<cmd>Trouble symbols<cr>", desc = "Symbols (Trouble)" },
     { "<leader>cl", "<cmd>Trouble lsp<cr>", desc = "LSP Definitions / references / ... (Trouble)" },
   },
-  init = function()
-    -- open the list window when a Trouble mode produced results, and close it
-    -- when it didn't. This is the `auto_open`/`auto_close` of the original
-    -- plugin, done by Neovim. `Trouble` is the quickfix half, `lTrouble` the
-    -- location list half, mirroring Vim's own `grep` / `lgrep` patterns.
-    vim.api.nvim_create_autocmd("QuickFixCmdPost", {
-      pattern = "Trouble",
-      callback = function()
-        vim.cmd("cwindow")
-      end,
-    })
-    vim.api.nvim_create_autocmd("QuickFixCmdPost", {
-      pattern = "lTrouble",
-      callback = function()
-        vim.cmd("lwindow")
-      end,
-    })
-  end,
 }
 ```
 
-Without that autocmd, `:Trouble diagnostics` fills the quickfix list silently and
-you open it yourself with `:copen`, exactly like `:vimgrep` or `:make`.
+Each of those is a toggle: press it again and the window closes.
 
 ## ⚙️ Configuration
 
@@ -134,7 +116,6 @@ local defaults = {
   ---@type "quickfix"|"loclist"
   list = "quickfix",
   auto_refresh = true, -- keep the list in sync while it is the current one
-  auto_jump = false, -- jump to the item when there's only one
   max_items = 200, -- limit number of items that can be displayed per section
   pinned = false, -- When pinned, the list will be bound to the current buffer
   warn_no_results = true, -- show a warning when there are no results
@@ -305,42 +286,19 @@ A location list belongs to the window that was current when you loaded the mode.
 Load it again from another window and it retargets there, leaving the first
 window's list intact. Close the window and the list goes with it.
 
-### Getting the window to show up
+### Showing and hiding
 
-After writing to the list, trouble fires **`QuickFixCmdPost`** — the same hook
+`:Trouble <mode>` runs `:cwindow` (or `:lwindow`), so the window appears when
+there are results and stays away when there aren't. Running the same mode again
+closes it. Switching to a *different* mode never closes — it shows the new list.
+
+Auto refresh never touches the window. Close it and it stays closed while the
+list keeps updating behind you, so a background re-lint can't pop it back open.
+
+Trouble also fires **`QuickFixCmdPost`** when you load a mode — the same hook
 `:vimgrep` and `:make` use — with pattern `Trouble` for the quickfix list and
-`lTrouble` for a location list, mirroring Vim's own `grep` / `lgrep` naming. So
-the standard idiom opens the window for you:
-
-```lua
-vim.api.nvim_create_autocmd("QuickFixCmdPost", {
-  pattern = "Trouble",
-  callback = function()
-    vim.cmd("cwindow")
-  end,
-})
-```
-
-```lua
-vim.api.nvim_create_autocmd("QuickFixCmdPost", {
-  pattern = "lTrouble",
-  callback = function()
-    vim.cmd("lwindow")
-  end,
-})
-```
-
-If you already have the classic pair in your config, both already match:
-
-```vim
-autocmd QuickFixCmdPost [^l]* cwindow
-autocmd QuickFixCmdPost l*    lwindow
-```
-
-The event fires **only when you load a mode**, never on an auto refresh — the
-same way `:vimgrep` fires it once when you run it. So closing the window sticks:
-the list keeps updating in the background, but nothing pops it back open until
-you ask for it again.
+`lTrouble` for a location list, mirroring Vim's `grep` / `lgrep` naming. You
+don't need it for the window, but it's there if you want to hook the results.
 
 The actions that remain are the ones the quickfix list can't do for itself,
 because they act on trouble's items rather than on the window:
@@ -391,9 +349,9 @@ You can use the following functions in your keybindings:
 <!-- api:start -->
 
 ```lua
--- Loads the given mode into its quickfix list and makes it the current one.
--- The quickfix window is not opened: use `:copen`, or a `cwindow` autocmd on
--- `QuickFixCmdPost` (trouble fires it with a `Trouble` pattern).
+-- Loads the given mode into its quickfix or location list and shows it.
+-- Running it again for a mode that is already on screen closes the window, so
+-- `:Trouble <mode>` toggles. Switching to a different mode never closes.
 ---@param opts? trouble.Mode | { refresh?: boolean } | string
 ---@return trouble.List?
 require("trouble").open(opts)

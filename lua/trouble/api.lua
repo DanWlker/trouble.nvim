@@ -62,9 +62,9 @@ function M._find(opts)
   return List.get(resolved.mode), resolved
 end
 
--- Loads the given mode into its quickfix list and makes it the current one.
--- The quickfix window is not opened: use `:copen`, or a `cwindow` autocmd on
--- `QuickFixCmdPost` (trouble fires it with a `Trouble` pattern).
+-- Loads the given mode into its quickfix or location list and shows it.
+-- Running it again for a mode that is already on screen closes the window, so
+-- `:Trouble <mode>` toggles. Switching to a different mode never closes.
 ---@param opts? trouble.Mode | { refresh?: boolean } | string
 ---@return trouble.List?
 function M.open(opts)
@@ -99,6 +99,18 @@ function M.open(opts)
     list._sig = sig
   elseif not opts._action then
     list._sig = sig
+  end
+
+  -- toggle: same mode, same options, already on screen -> close it.
+  -- A rebuild above already cleared `list`, so changing options never closes.
+  -- `retarget` first: asking for a location list mode from a different window
+  -- means "show me this window's results", not "close the other window's list".
+  if list and not opts._action then
+    list:retarget()
+    if list:is_open() then
+      Qf.close(list:win())
+      return list
+    end
   end
 
   if list:is_active() and opts.refresh == false then

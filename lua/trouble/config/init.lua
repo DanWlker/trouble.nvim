@@ -19,7 +19,6 @@ local defaults = {
   ---@type "quickfix"|"loclist"
   list = "quickfix",
   auto_refresh = true, -- keep the list in sync while it is the current one
-  auto_jump = false, -- jump to the item when there's only one
   max_items = 200, -- limit number of items that can be displayed per section
   pinned = false, -- When pinned, the list will be bound to the current buffer
   warn_no_results = true, -- show a warning when there are no results

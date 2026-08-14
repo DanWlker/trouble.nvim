@@ -153,6 +153,11 @@ function M:retarget()
   end
 end
 
+--- True when this mode's list is on screen.
+function M:is_open()
+  return self:is_active() and Qf.is_open(self:win())
+end
+
 --- True when this list is the one `:cnext` / `:lnext` currently act on.
 function M:is_active()
   if self.opts.list == "loclist" and not self:win() then
@@ -230,9 +235,8 @@ function M:update()
   end
 end
 
---- Loads the mode into its quickfix list and makes it the current one.
---- Showing the window is the user's job: `:copen`, or a `cwindow` autocmd
---- on `QuickFixCmdPost`.
+--- Loads the mode into its list, makes it the current one, and shows it with
+--- `:cwindow`/`:lwindow` (which hides it again when there are no results).
 function M:open()
   self:retarget()
   self:listen()
@@ -244,16 +248,16 @@ function M:open()
       self:write({ force = true })
       Qf.activate(self:win(), self.list_id)
 
-      if count == 0 then
-        if self.opts.warn_no_results then
-          local main = self.sections[1] and self.sections[1]:main()
-          Util.warn({
-            "No results for **" .. (self.opts.mode or "?") .. "**",
-            main and ("Buffer: " .. vim.api.nvim_buf_get_name(main.buf)) or "",
-          })
-        end
-      elseif count == 1 and self.opts.auto_jump then
-        vim.cmd(self.opts.list == "loclist" and "lfirst" or "cfirst")
+      -- `:cwindow`/`:lwindow`, so an empty result hides the window
+      -- instead of leaving stale output on screen
+      Qf.open(self:win())
+
+      if count == 0 and self.opts.warn_no_results then
+        local main = self.sections[1] and self.sections[1]:main()
+        Util.warn({
+          "No results for **" .. (self.opts.mode or "?") .. "**",
+          main and ("Buffer: " .. vim.api.nvim_buf_get_name(main.buf)) or "",
+        })
       end
     end)
     :next(self.first_update.resolve)

@@ -228,9 +228,42 @@ function M.win(win)
   return id ~= 0 and id or nil
 end
 
---- Fires `QuickFixCmdPost` the way `:vimgrep` and `:lvimgrep` do, so the usual
---- `cwindow`/`lwindow` autocmds pick the results up. The pattern mirrors Vim's
---- own `grep` vs `lgrep` naming, so `[^l]*` and `l*` filters keep working.
+---@param win? number
+function M.is_open(win)
+  return M.win(win) ~= nil
+end
+
+--- `:cwindow` / `:lwindow`: opens the window when the list has entries, closes
+--- it when it doesn't. Deliberately not `:copen` — letting Vim decide is what
+--- makes "no results" and "results went away" behave sensibly for free.
+---@param win? number
+function M.open(win)
+  if win then
+    vim.api.nvim_win_call(win, function()
+      vim.cmd("lwindow")
+    end)
+  else
+    vim.cmd("cwindow")
+  end
+end
+
+---@param win? number
+function M.close(win)
+  if not M.is_open(win) then
+    return
+  end
+  if win then
+    vim.api.nvim_win_call(win, function()
+      vim.cmd("lclose")
+    end)
+  else
+    vim.cmd("cclose")
+  end
+end
+
+--- Fires `QuickFixCmdPost` the way `:vimgrep` and `:lvimgrep` do, so any
+--- existing autocmds pick the results up. The pattern mirrors Vim's own
+--- `grep` vs `lgrep` naming, so `[^l]*` and `l*` filters keep working.
 ---@param win? number
 function M.post(win)
   vim.api.nvim_exec_autocmds("QuickFixCmdPost", {
